@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Enums\CreationStatus;
 use App\Models\Creation;
+use App\Services\CreationService;
 use App\Services\Credits\CreditService;
 use App\Services\ModelProviders\ModelProvider;
 use App\Services\ModelProviders\PermanentProviderException;
@@ -13,7 +14,6 @@ use Carbon\CarbonInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 
@@ -71,7 +71,7 @@ class GenerateCreation implements ShouldQueue
         }
 
         if ($creation->created_at->addSeconds((int) config('models.timeout_seconds'))->isPast()) {
-            $this->markFailed($creation, 'Generation timed out.', $credits);
+            $this->markFailed($creation, 'Generation timed out.');
 
             return;
         }
@@ -96,7 +96,7 @@ class GenerateCreation implements ShouldQueue
         } catch (TransientProviderException) {
             $this->release(self::TRANSIENT_RETRY_SECONDS);
         } catch (PermanentProviderException $e) {
-            $this->markFailed($creation, $e->getMessage(), $credits);
+            $this->markFailed($creation, $e->getMessage());
         }
     }
 
@@ -106,7 +106,7 @@ class GenerateCreation implements ShouldQueue
         $creation = Creation::find($this->creationId);
 
         if ($creation && ! $creation->status->isFinished()) {
-            $this->markFailed($creation, 'Generation failed unexpectedly.', app(CreditService::class));
+            $this->markFailed($creation, 'Generation failed unexpectedly.');
         }
     }
 
@@ -157,21 +157,10 @@ class GenerateCreation implements ShouldQueue
         $creation->refresh();
     }
 
-    /**
-     * Fail and refund atomically. Conditional on the creation not being finished, and the
-     * refund shares the transaction: if it throws, the status rolls back and the job retries.
-     */
-    private function markFailed(Creation $creation, string $message, CreditService $credits): void
+    /** Fail and refund through the shared service, then sync the caller's model. */
+    private function markFailed(Creation $creation, string $message): void
     {
-        DB::transaction(function () use ($creation, $message, $credits) {
-            $updated = Creation::whereKey($creation->id)
-                ->whereNotIn('status', self::FINISHED)
-                ->update(['status' => CreationStatus::Failed->value, 'error' => $message, 'updated_at' => now()]);
-
-            if ($updated > 0) {
-                $credits->refund($creation);
-            }
-        });
+        app(CreationService::class)->markFailed($creation->id, $message);
 
         $creation->refresh();
     }

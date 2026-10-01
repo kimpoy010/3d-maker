@@ -61,4 +61,26 @@ class CreationService
 
         return $creation;
     }
+
+    /**
+     * Fail and refund atomically. Conditional on the creation not being finished, and the
+     * refund shares the transaction: if it throws, the status rolls back. Returns whether
+     * this call moved the creation to failed.
+     */
+    public function markFailed(int $creationId, string $message): bool
+    {
+        return DB::transaction(function () use ($creationId, $message) {
+            $updated = Creation::whereKey($creationId)
+                ->whereNotIn('status', [CreationStatus::Succeeded->value, CreationStatus::Failed->value])
+                ->update(['status' => CreationStatus::Failed->value, 'error' => $message, 'updated_at' => now()]);
+
+            if ($updated === 0) {
+                return false;
+            }
+
+            $this->credits->refund(Creation::findOrFail($creationId));
+
+            return true;
+        });
+    }
 }
