@@ -4,9 +4,9 @@
 
 **Goal:** Build sub-project 1 of the 3D Maker app: accounts, a photo → 3D model creation flow (queued, via a swappable provider adapter with a mock implementation), an in-browser 3D viewer with download, and a credits ledger.
 
-**Architecture:** Laravel 13 monolith using the official Vue starter kit (Inertia + Vue 3 + TypeScript + Tailwind + shadcn-vue, auth via Fortify). A `ModelProvider` interface hides the image-to-3D API; `MockProvider` is the only implementation now. Generation runs in a queued `GenerateCreation` job that polls the provider by releasing itself back onto the queue. Credits are an append-only ledger; failed generations refund idempotently. The browser polls the creation page for status.
+**Architecture:** Laravel 12 monolith using the official Vue starter kit (Inertia + Vue 3 + TypeScript + Tailwind + shadcn-vue, auth via Fortify). A `ModelProvider` interface hides the image-to-3D API; `MockProvider` is the only implementation now. Generation runs in a queued `GenerateCreation` job that polls the provider by releasing itself back onto the queue. Credits are an append-only ledger; failed generations refund idempotently. The browser polls the creation page for status.
 
-**Tech Stack:** PHP 8.4, Laravel 13, MySQL 8.4 (dev) / SQLite in-memory (tests), Inertia, Vue 3 + TypeScript, Tailwind, Pest, Three.js (GLTFLoader, OrbitControls), GD.
+**Tech Stack:** PHP 8.4, Laravel 12, MySQL 8.4 (dev) / SQLite in-memory (tests), Inertia, Vue 3 + TypeScript, Tailwind, Pest, Three.js (GLTFLoader, OrbitControls), GD.
 
 **Spec:** `docs/superpowers/specs/2026-10-01-foundation-core-creator-design.md`
 
@@ -62,7 +62,7 @@ tests/Feature/*.php
 - Modify: `docs/superpowers/specs/2026-10-01-foundation-core-creator-design.md` (already updated; verify only)
 
 **Interfaces:**
-- Produces: a booting Laravel 13 app with Fortify auth, Inertia/Vue pages, Pest, MySQL database `three_d_maker`, git repo on `main` with `origin` = `https://github.com/kimpoy010/3d-maker.git`.
+- Produces: a booting Laravel 12 app with Fortify auth, Inertia/Vue pages, Pest, MySQL database `three_d_maker`, git repo on `main` with `origin` = `https://github.com/kimpoy010/3d-maker.git`.
 
 - [ ] **Step 1: Scaffold into a temp folder and move it up**
 
@@ -76,7 +76,7 @@ rm -rf _scaffold
 php artisan optimize:clear
 composer show laravel/framework | head -3
 ```
-Expected: `versions : * v13.x`. If it is not 13, stop and tell the user.
+Expected: `versions : * v12.x`. If it is not 12.x, stop and tell the user.
 
 - [ ] **Step 2: Create the MySQL database and point `.env` at it**
 
@@ -117,7 +117,7 @@ git init -b main
 git remote add origin https://github.com/kimpoy010/3d-maker.git
 git add -A
 git status --short | head -20   # confirm .env and node_modules are NOT listed
-git commit -m "chore: scaffold Laravel 13 Vue starter kit with spec and plan
+git commit -m "chore: scaffold Laravel 12 Vue starter kit with spec and plan
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
@@ -3477,7 +3477,7 @@ Replace `README.md` with:
 ```markdown
 # 3D Maker
 
-Turn a photo of a person, pet, or object into a downloadable 3D model. Laravel 13 + Inertia/Vue + MySQL.
+Turn a photo of a person, pet, or object into a downloadable 3D model. Laravel 12 + Inertia/Vue + MySQL.
 
 ## Setup (Laragon)
 
