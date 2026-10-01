@@ -157,6 +157,7 @@ it('allows one run per stylization at a time and keeps the timing invariant', fu
     expect($lock)->toBeInstanceOf(WithoutOverlapping::class)
         ->and($lock->key)->toBe(7)
         ->and($lock->expiresAfter)->toBe(240)
+        ->and((int) config('stylizer.openai.timeout_seconds'))->toBeLessThan($job->timeout)
         ->and($job->timeout)->toBeLessThan($lock->expiresAfter)
         ->and($lock->expiresAfter)->toBeLessThan((int) config('queue.connections.database.retry_after'));
 });

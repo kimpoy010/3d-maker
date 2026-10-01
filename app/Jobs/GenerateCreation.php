@@ -5,7 +5,6 @@ namespace App\Jobs;
 use App\Enums\CreationStatus;
 use App\Models\Creation;
 use App\Services\CreationService;
-use App\Services\Credits\CreditService;
 use App\Services\ModelProviders\ModelProvider;
 use App\Services\ModelProviders\PermanentProviderException;
 use App\Services\ModelProviders\ProviderState;
@@ -35,7 +34,7 @@ class GenerateCreation implements ShouldQueue
 
     /**
      * Hard per-attempt limit for the worker. Must stay below the overlap lock's
-     * expiry, which must stay below the queue connection's retry_after (90s).
+     * expiry, which must stay below the queue connection's retry_after (300s).
      */
     public int $timeout = 60;
 
@@ -43,7 +42,7 @@ class GenerateCreation implements ShouldQueue
 
     /**
      * One run per creation at a time. The lock expires (80s) after the worker's
-     * timeout (60s) but before retry_after (90s), so a crashed run frees the lock
+     * timeout (60s) but before retry_after (300s), so a crashed run frees the lock
      * before the queue hands the job to another worker.
      *
      * @return list<object>
@@ -63,7 +62,7 @@ class GenerateCreation implements ShouldQueue
         return now()->addSeconds((int) config('models.timeout_seconds') + 120);
     }
 
-    public function handle(ModelProvider $provider, CreditService $credits): void
+    public function handle(ModelProvider $provider): void
     {
         $creation = Creation::with('style')->find($this->creationId);
 
@@ -91,7 +90,7 @@ class GenerateCreation implements ShouldQueue
 
             match ($result->state) {
                 ProviderState::Pending, ProviderState::Running => $this->stillWorking($creation, $result->progress),
-                ProviderState::Failed => $this->markFailed($creation, $result->error ?? 'The model could not be generated.', $credits),
+                ProviderState::Failed => $this->markFailed($creation, $result->error ?? 'The model could not be generated.'),
                 ProviderState::Succeeded => $this->succeed($creation, $provider, $result->modelUrl, $result->thumbnailUrl, $result->printModelUrl),
             };
         } catch (TransientProviderException) {

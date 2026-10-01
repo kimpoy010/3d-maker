@@ -42,8 +42,8 @@ A customer's photo is first restyled by an image model, then the approved pictur
 | `STYLIZER_ENABLED` | `true` | Kill switch. `false` rejects new previews with a clear message. |
 | `OPENAI_API_KEY` | empty | OpenAI key, used when `STYLIZER_PROVIDER=openai`. |
 | `OPENAI_IMAGE_MODEL` | `gpt-image-1.5` | OpenAI image model. |
-| `OPENAI_IMAGE_QUALITY` | `medium` | Image quality passed to OpenAI (optional; not in `.env.example`). |
-| `OPENAI_IMAGE_SIZE` | `1024x1536` | Image size passed to OpenAI (optional; not in `.env.example`). |
+| `OPENAI_IMAGE_QUALITY` | `medium` | Image quality passed to OpenAI. |
+| `OPENAI_IMAGE_SIZE` | `1024x1536` | Image size passed to OpenAI. |
 | `MODEL_PROVIDER` | `mock` | 3D provider: `mock` or `meshy`. |
 | `MESHY_API_KEY` | empty | Meshy key, used when `MODEL_PROVIDER=meshy`. |
 | `MESHY_MODEL` | unset | Optional Meshy model version (`ai_model`). Unset uses Meshy's default. |
@@ -65,7 +65,7 @@ Set `OPENAI_API_KEY`, `MESHY_API_KEY`, `STYLIZER_PROVIDER=openai` and `MODEL_PRO
 php artisan providers:smoke photo.jpg chibi
 ```
 
-It asks for confirmation, runs ONE restyle and ONE 3D build, and saves the results under `storage/app/private/smoke/{timestamp}/` (`original.jpg`, `restyled.png`, `model.glb`, `print.stl`, `thumbnail.png`). Inspect the files by hand. **It makes paid API calls.** Use `--subject=pet` or `--subject=object` when the style name exists for more than one subject, and `--skip-3d` to stop after the restyle. The automated tests only ever use the mock providers.
+It asks for confirmation, runs ONE restyle and ONE 3D build, and saves the results under `storage/app/private/smoke/{timestamp}/` (`original.jpg`, `restyled.png`, `model.glb`, `print.stl`, `thumbnail.png`). Inspect the files by hand. **It makes paid API calls.** The style may be a numeric style id or a look such as `chibi`. Use `--subject=pet` or `--subject=object` when the style name exists for more than one subject, and `--skip-3d` to stop after the restyle. The automated tests only ever use the mock providers.
 
 Production refuses `mock` providers: resolving the restyler or the 3D provider with `STYLIZER_PROVIDER=mock` or `MODEL_PROVIDER=mock` throws when `APP_ENV=production`.
 
@@ -78,10 +78,11 @@ Production refuses `mock` providers: resolving the restyler or the 3D provider w
 
 - Run the scheduler. It runs `creations:sweep` every five minutes (fails and refunds stuck creations and previews) and `stylizations:prune` daily (deletes expired unapproved previews). Use `php artisan schedule:work` in development and a cron entry `* * * * * php artisan schedule:run` in production.
 - Keep `DB_QUEUE_RETRY_AFTER` above 240 seconds (default 300). The restyle job can run for minutes, and a lower value would let a second worker pick up a job that is still running.
+- In production run `php artisan queue:work` under a process supervisor (systemd, Supervisor). The job-level `$timeout` governs how long a job may run; it is not enforced on Windows, which has no `pcntl`. The development script uses `queue:listen --timeout=0` so a slow real OpenAI call is not killed by the listener's default 60 seconds.
 
 ### Privacy and retention
 
-Customer photos are sent to OpenAI (restyle) and the restyled picture is sent to Meshy (3D build) when the real providers are enabled. The original photo is deleted when the preview is approved. Unapproved previews and their originals are deleted after `STYLIZER_RETENTION_DAYS` (default 7). The STL is stored for the operator at `storage/app/private/creations/{id}/print.stl` and is never shown to customers.
+Customer photos are sent to OpenAI (restyle) and the restyled picture is sent to Meshy (3D build) when the real providers are enabled. The original photo is deleted when the preview is approved. The approved preview is kept with the creation until the customer deletes it. Unapproved previews and their originals are deleted after `STYLIZER_RETENTION_DAYS` (default 7). The STL is stored for the operator at `storage/app/private/creations/{id}/print.stl` and is never shown to customers.
 
 ### Launch checklist
 

@@ -38,15 +38,15 @@ class SmokeProviders extends Command
             return self::FAILURE;
         }
 
-        if (! $this->confirm('This makes paid API calls with your configured keys. Continue?')) {
-            return self::FAILURE;
-        }
-
         $style = $this->findStyle();
 
         if (! $style) {
             $this->error('No such style. Use a style id, or a look like chibi (with --subject).');
 
+            return self::FAILURE;
+        }
+
+        if (! $this->confirm('This makes paid API calls with your configured keys. Continue?')) {
             return self::FAILURE;
         }
 

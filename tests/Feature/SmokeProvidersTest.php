@@ -51,7 +51,7 @@ it('does nothing without confirmation, and rejects unknown styles or missing pho
         ->assertFailed();
 
     $this->artisan('providers:smoke', ['photo' => $this->photo, 'style' => 'nonexistent'])
-        ->expectsConfirmation('This makes paid API calls with your configured keys. Continue?', 'yes')
+        ->expectsOutputToContain('No such style')
         ->assertFailed();
 
     $this->artisan('providers:smoke', ['photo' => '/no/such/photo.jpg', 'style' => 'chibi'])
