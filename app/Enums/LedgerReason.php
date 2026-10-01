@@ -8,4 +8,6 @@ enum LedgerReason: string
     case Topup = 'topup';
     case Generation = 'generation';
     case Refund = 'refund';
+    case Stylize = 'stylize';
+    case StylizeRefund = 'stylize_refund';
 }

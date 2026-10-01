@@ -11,7 +11,7 @@ class CreditLedgerEntry extends Model
 
     protected $table = 'credit_ledger';
 
-    protected $fillable = ['user_id', 'delta', 'reason', 'creation_id'];
+    protected $fillable = ['user_id', 'delta', 'reason', 'creation_id', 'stylization_id'];
 
     protected function casts(): array
     {
