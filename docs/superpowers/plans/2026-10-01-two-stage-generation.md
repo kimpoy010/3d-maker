@@ -2352,13 +2352,13 @@ beforeEach(function () {
     $this->makeReady = function (array $attrs = []) {
         Storage::disk('local')->put('stylizations/h/original.jpg', fakeJpegBytes());
         Storage::disk('local')->put('stylizations/h/result.png', fakeJpegBytes(1024, 1536));
-        $stylization = Stylization::factory()->create([
+        $stylization = Stylization::factory()->create($attrs + [
             'user_id' => $this->user->id,
             'style_id' => $this->style->id,
             'status' => StylizationStatus::Ready,
             'source_image_path' => 'stylizations/h/original.jpg',
             'result_image_path' => 'stylizations/h/result.png',
-        ] + $attrs);
+        ]);
         $this->credits->spendForStylization($this->user, 1, $stylization);
 
         return $stylization;
