@@ -1,5 +1,8 @@
 <?php
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
 /*
 |--------------------------------------------------------------------------
 | Test Case
@@ -11,8 +14,8 @@
 |
 */
 
-pest()->extend(Tests\TestCase::class)
-    ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
+pest()->extend(TestCase::class)
+    ->use(RefreshDatabase::class)
     ->in('Feature');
 
 /*
@@ -44,4 +47,16 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+/** A real JPEG for tests that need file contents on the fake disk. */
+function fakeJpegBytes(int $width = 800, int $height = 800): string
+{
+    $image = imagecreatetruecolor($width, $height);
+    imagefill($image, 0, 0, imagecolorallocate($image, 120, 160, 200));
+
+    ob_start();
+    imagejpeg($image, null, 90);
+
+    return (string) ob_get_clean();
 }
