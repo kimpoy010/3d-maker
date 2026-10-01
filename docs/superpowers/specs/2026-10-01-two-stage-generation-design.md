@@ -1,7 +1,7 @@
 # Two-stage generation: restyled photo preview, then 3D model
 
 Date: 2026-10-01
-Status: Draft for review
+Status: Approved (implemented)
 Builds on: `2026-10-01-foundation-core-creator-design.md` (implemented)
 
 ## 1. Context and goal
