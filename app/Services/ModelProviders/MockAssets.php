@@ -73,6 +73,49 @@ final class MockAssets
             .pack('V2', strlen($bin), 0x004E4942).$bin;
     }
 
+    /** A minimal valid ASCII STL: one unit cube made of twelve triangles. */
+    public static function stl(Subject $subject): string
+    {
+        $vertices = [];
+        for ($i = 0; $i < 8; $i++) {
+            $vertices[] = [($i & 1) ? 0.5 : -0.5, ($i & 2) ? 0.5 : -0.5, ($i & 4) ? 0.5 : -0.5];
+        }
+
+        // Same triangle list as the GLB cube: counter-clockwise seen from outside.
+        $triangles = [
+            [4, 5, 7], [4, 7, 6], [1, 0, 2], [1, 2, 3], [1, 3, 7], [1, 7, 5],
+            [0, 4, 6], [0, 6, 2], [2, 6, 7], [2, 7, 3], [0, 1, 5], [0, 5, 4],
+        ];
+
+        $name = "mock-{$subject->value}";
+        $out = "solid {$name}\n";
+
+        foreach ($triangles as [$a, $b, $c]) {
+            [$ax, $ay, $az] = $vertices[$a];
+            [$bx, $by, $bz] = $vertices[$b];
+            [$cx, $cy, $cz] = $vertices[$c];
+
+            $ux = $bx - $ax;
+            $uy = $by - $ay;
+            $uz = $bz - $az;
+            $vx = $cx - $ax;
+            $vy = $cy - $ay;
+            $vz = $cz - $az;
+            $nx = $uy * $vz - $uz * $vy;
+            $ny = $uz * $vx - $ux * $vz;
+            $nz = $ux * $vy - $uy * $vx;
+            $length = sqrt($nx * $nx + $ny * $ny + $nz * $nz) ?: 1.0;
+
+            $out .= sprintf("facet normal %.6f %.6f %.6f\n  outer loop\n", $nx / $length, $ny / $length, $nz / $length);
+            foreach ([[$ax, $ay, $az], [$bx, $by, $bz], [$cx, $cy, $cz]] as [$x, $y, $z]) {
+                $out .= sprintf("    vertex %.6f %.6f %.6f\n", $x, $y, $z);
+            }
+            $out .= "  endloop\nendfacet\n";
+        }
+
+        return $out."endsolid {$name}\n";
+    }
+
     /** A flat-colour 256x256 PNG. */
     public static function thumbnail(Subject $subject): string
     {

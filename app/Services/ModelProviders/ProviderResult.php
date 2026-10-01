@@ -10,5 +10,6 @@ final class ProviderResult
         public readonly ?string $thumbnailUrl = null,
         public readonly ?string $error = null,
         public readonly ?int $progress = null,
+        public readonly ?string $printModelUrl = null,
     ) {}
 }

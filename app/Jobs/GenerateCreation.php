@@ -91,7 +91,7 @@ class GenerateCreation implements ShouldQueue
             match ($result->state) {
                 ProviderState::Pending, ProviderState::Running => $this->stillWorking($creation, $result->progress),
                 ProviderState::Failed => $this->markFailed($creation, $result->error ?? 'The model could not be generated.', $credits),
-                ProviderState::Succeeded => $this->succeed($creation, $provider, $result->modelUrl, $result->thumbnailUrl),
+                ProviderState::Succeeded => $this->succeed($creation, $provider, $result->modelUrl, $result->thumbnailUrl, $result->printModelUrl),
             };
         } catch (TransientProviderException) {
             $this->release(self::TRANSIENT_RETRY_SECONDS);
@@ -116,7 +116,7 @@ class GenerateCreation implements ShouldQueue
         $this->release((int) config('models.poll_seconds'));
     }
 
-    private function succeed(Creation $creation, ModelProvider $provider, ?string $modelUrl, ?string $thumbnailUrl): void
+    private function succeed(Creation $creation, ModelProvider $provider, ?string $modelUrl, ?string $thumbnailUrl, ?string $printUrl): void
     {
         if (! $modelUrl) {
             throw new PermanentProviderException('The provider finished without a model.');
@@ -133,12 +133,20 @@ class GenerateCreation implements ShouldQueue
             $disk->put($thumbPath, $provider->download($thumbnailUrl));
         }
 
+        $printPath = null;
+
+        if ($printUrl) {
+            $printPath = "creations/{$creation->id}/print.stl";
+            $disk->put($printPath, $provider->download($printUrl));
+        }
+
         $updated = Creation::whereKey($creation->id)
             ->whereNotIn('status', self::FINISHED)
             ->update([
                 'status' => CreationStatus::Succeeded->value,
                 'model_path' => $modelPath,
                 'thumbnail_path' => $thumbPath,
+                'print_model_path' => $printPath,
                 'progress' => 100,
                 'error' => null,
                 'updated_at' => now(),
@@ -148,7 +156,7 @@ class GenerateCreation implements ShouldQueue
             // Another run already finished this creation. If it failed (and was refunded),
             // drop what we stored; if it succeeded, the identical files are its own.
             if (Creation::whereKey($creation->id)->first()?->status === CreationStatus::Failed) {
-                $disk->delete(array_filter([$modelPath, $thumbPath]));
+                $disk->delete(array_filter([$modelPath, $thumbPath, $printPath]));
             }
 
             return;

@@ -8,6 +8,7 @@ use App\Models\CreditLedgerEntry;
 use App\Models\Style;
 use App\Models\User;
 use App\Services\Credits\CreditService;
+use App\Services\ModelProviders\MockProvider;
 use App\Services\ModelProviders\ModelProvider;
 use App\Services\ModelProviders\PermanentProviderException;
 use App\Services\ModelProviders\ProviderResult;
@@ -284,4 +285,36 @@ it('prevents overlapping runs for the same creation', function () {
         ->and($middleware[0])->toBeInstanceOf(WithoutOverlapping::class)
         ->and($middleware[0]->key)->toBe(42)
         ->and($middleware[0]->expiresAfter)->toBeLessThan(90);
+});
+
+it('stores the print model next to the preview model on success', function () {
+    $creation = ($this->makeCreation)();
+
+    ($this->runJob)($creation);
+
+    $creation->refresh();
+    expect($creation->print_model_path)->toBe("creations/{$creation->id}/print.stl");
+    Storage::disk('local')->assertExists($creation->print_model_path);
+    expect(Storage::disk('local')->get($creation->print_model_path))->toStartWith('solid mock-');
+});
+
+it('removes all three stored files when a losing run finds the creation already failed', function () {
+    $this->app->bind(ModelProvider::class, fn () => new class extends MockProvider
+    {
+        public function download(string $url): string
+        {
+            // Another run fails the creation while this one is downloading.
+            Creation::query()->update(['status' => CreationStatus::Failed->value]);
+
+            return parent::download($url);
+        }
+    });
+    $creation = ($this->makeCreation)();
+
+    ($this->runJob)($creation);
+
+    expect($creation->fresh()->status)->toBe(CreationStatus::Failed);
+    Storage::disk('local')->assertMissing("creations/{$creation->id}/model.glb");
+    Storage::disk('local')->assertMissing("creations/{$creation->id}/thumbnail.png");
+    Storage::disk('local')->assertMissing("creations/{$creation->id}/print.stl");
 });

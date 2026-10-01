@@ -70,3 +70,17 @@ it('refuses to download unknown urls', function () {
 it('builds distinct assets per subject', function () {
     expect(MockAssets::glb(Subject::Person))->not->toBe(MockAssets::glb(Subject::Pet));
 });
+
+it('returns a print model url when finished and serves a valid ascii stl', function () {
+    config(['models.mock.delay_seconds' => 0, 'models.mock.fail_rate' => 0]);
+    $provider = new MockProvider;
+    $id = $provider->start('/tmp/photo.jpg', Style::factory()->make(['subject' => Subject::Pet]));
+
+    $done = $provider->status($id);
+    expect($done->printModelUrl)->toBe('mock://print/pet');
+
+    $stl = $provider->download('mock://print/pet');
+    expect($stl)->toStartWith('solid mock-pet')
+        ->and(substr_count($stl, 'facet normal'))->toBe(12)
+        ->and($stl)->toContain('endsolid mock-pet');
+});

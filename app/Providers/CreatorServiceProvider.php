@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\ModelProviders\MeshyProvider;
 use App\Services\ModelProviders\MockProvider;
 use App\Services\ModelProviders\ModelProvider;
 use App\Services\Stylizers\ImageStylizer;
@@ -25,6 +26,7 @@ class CreatorServiceProvider extends ServiceProvider
 
             return match ($name) {
                 'mock' => new MockProvider,
+                'meshy' => app(MeshyProvider::class),
                 default => throw new InvalidArgumentException("Unknown model provider [{$name}]."),
             };
         });

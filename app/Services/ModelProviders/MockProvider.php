@@ -7,7 +7,7 @@ use App\Models\Style;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
-final class MockProvider implements ModelProvider
+class MockProvider implements ModelProvider
 {
     public function start(string $imagePath, Style $style): string
     {
@@ -51,18 +51,23 @@ final class MockProvider implements ModelProvider
             modelUrl: "mock://model/{$job['subject']}",
             thumbnailUrl: "mock://thumbnail/{$job['subject']}",
             progress: 100,
+            printModelUrl: "mock://print/{$job['subject']}",
         );
     }
 
     public function download(string $url): string
     {
-        if (! preg_match('#^mock://(model|thumbnail)/(person|pet|object)$#', $url, $m)) {
+        if (! preg_match('#^mock://(model|thumbnail|print)/(person|pet|object)$#', $url, $m)) {
             throw new PermanentProviderException("Unsupported mock asset URL [{$url}].");
         }
 
         $subject = Subject::from($m[2]);
 
-        return $m[1] === 'model' ? MockAssets::glb($subject) : MockAssets::thumbnail($subject);
+        return match ($m[1]) {
+            'model' => MockAssets::glb($subject),
+            'thumbnail' => MockAssets::thumbnail($subject),
+            'print' => MockAssets::stl($subject),
+        };
     }
 
     private function key(string $id): string
