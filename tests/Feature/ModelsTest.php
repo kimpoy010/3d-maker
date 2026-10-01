@@ -82,3 +82,24 @@ it('offers a sleepy look for people and pets', function () {
         ->and($sleepy->every(fn (Style $style) => str_contains($style->prompt, 'sleepy')))->toBeTrue()
         ->and($sleepy->every(fn (Style $style) => $style->credit_cost === 5))->toBeTrue();
 });
+
+it('asks figure styles for a full-body shot on a plain background', function () {
+    $this->seed(StyleSeeder::class);
+
+    $figures = Style::whereIn('look', ['chibi', 'sleepy', 'clay'])
+        ->where(fn ($query) => $query->where('subject', 'person')->orWhere('look', 'sleepy'))
+        ->get();
+
+    expect($figures)->toHaveCount(4)
+        ->and($figures->every(fn (Style $style) => str_contains($style->prompt, 'Full body')))->toBeTrue()
+        ->and($figures->every(fn (Style $style) => str_contains(strtolower($style->prompt), 'plain seamless')))->toBeTrue()
+        ->and($figures->every(fn (Style $style) => str_contains($style->prompt, 'no text')))->toBeTrue();
+});
+
+it('keeps third-party brand names out of style prompts', function () {
+    $this->seed(StyleSeeder::class);
+
+    foreach (Style::all() as $style) {
+        expect(strtolower($style->prompt))->not->toContain('funko')->not->toContain('pop figure')->not->toContain('mukha');
+    }
+});
