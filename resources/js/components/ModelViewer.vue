@@ -21,12 +21,18 @@ let loadId = 0;
 let resizeObserver: ResizeObserver | null = null;
 let lights: THREE.Light[] = [];
 
+function makeDirectional(color: number, intensity: number, x: number, y: number, z: number) {
+    const light = new THREE.DirectionalLight(color, intensity);
+    light.position.set(x, y, z);
+    return light;
+}
+
 function applyPreset() {
     if (!scene) return;
     lights.forEach((l) => scene!.remove(l));
     lights = preset.value === 'studio'
-        ? [new THREE.HemisphereLight(0xffffff, 0x666677, 1.1), Object.assign(new THREE.DirectionalLight(0xffffff, 2.2), { position: new THREE.Vector3(3, 5, 4) })]
-        : [new THREE.HemisphereLight(0xffffff, 0xddddee, 2.2), Object.assign(new THREE.DirectionalLight(0xfff2e0, 0.6), { position: new THREE.Vector3(-2, 3, 2) })];
+        ? [new THREE.HemisphereLight(0xffffff, 0x666677, 1.1), makeDirectional(0xffffff, 2.2, 3, 5, 4)]
+        : [new THREE.HemisphereLight(0xffffff, 0xddddee, 2.2), makeDirectional(0xfff2e0, 0.6, -2, 3, 2)];
     lights.forEach((l) => scene!.add(l));
 }
 
