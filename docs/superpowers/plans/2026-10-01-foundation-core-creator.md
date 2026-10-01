@@ -3452,7 +3452,7 @@ Expected: Pint reports fixes or none, suite PASS.
 
 ```bash
 php artisan serve
-php artisan queue:listen --tries=1 --timeout=0
+php artisan queue:listen --timeout=0
 npm run dev
 ```
 
@@ -3485,7 +3485,7 @@ Turn a photo of a person, pet, or object into a downloadable 3D model. Laravel 1
 2. Copy `.env.example` to `.env`, then `php artisan key:generate`
 3. Create the MySQL database `three_d_maker` and set `DB_*` in `.env`
 4. `php artisan migrate --seed`
-5. Run in three terminals: `php artisan serve`, `php artisan queue:listen --tries=1 --timeout=0`, `npm run dev`
+5. Run in three terminals: `php artisan serve`, `php artisan queue:listen --timeout=0`, `npm run dev`
 
 ## Model provider
 

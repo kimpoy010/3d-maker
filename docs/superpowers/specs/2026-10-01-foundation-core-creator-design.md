@@ -1,7 +1,7 @@
-# 3D Mukha — Sub-project 1: Foundation + Core Creator
+# 3D Maker — Sub-project 1: Foundation + Core Creator
 
 Date: 2026-10-01
-Status: Draft for review
+Status: Approved (implemented)
 
 ## 1. Context
 
@@ -43,11 +43,13 @@ Out of scope: public gallery, sharing, real payments, orders/shop, admin, partne
 ## 5. Generation flow
 
 1. User uploads a photo and picks a style. Server validates type, size and minimum resolution.
-2. In a single DB transaction: check balance, insert `-cost` ledger row, create the `creations` row as `queued`, dispatch `GenerateCreation`. Insufficient balance returns a clear error and creates nothing.
+2. In a single DB transaction: check balance, insert `-cost` ledger row, and create the `creations` row as `queued`. Insufficient balance returns a clear error and creates nothing. `GenerateCreation` is dispatched only after the transaction commits.
 3. The job calls `ModelProvider::start()`, then polls `status()` until done or timed out.
 4. On success: download the GLB and thumbnail into private storage, mark `succeeded`.
 5. On failure: mark `failed`, insert a `+cost` refund ledger row (once per creation).
 6. The creation page polls `GET /creations/{id}` every 3 s and renders the viewer on success.
+
+A scheduled `creations:sweep` command (every five minutes) fails and refunds any creation still `queued`/`processing` longer than the generation timeout plus a two-minute grace, covering lost queue payloads and dispatch failures.
 
 ## 6. Provider adapter
 
