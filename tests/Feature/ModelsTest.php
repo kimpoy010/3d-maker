@@ -70,7 +70,7 @@ it('writes different prompts for different looks', function () {
     $person = Style::where('subject', 'person')->pluck('prompt', 'look');
 
     expect($person['chibi'])->not->toBe($person['clay'])
-        ->and($person['chibi'])->toContain('chibi');
+        ->and(strtolower($person['chibi']))->toContain('chibi');
 });
 
 it('offers a sleepy look for people and pets', function () {
@@ -91,7 +91,7 @@ it('asks figure styles for a full-body shot on a plain background', function () 
         ->get();
 
     expect($figures)->toHaveCount(4)
-        ->and($figures->every(fn (Style $style) => str_contains($style->prompt, 'Full body')))->toBeTrue()
+        ->and($figures->every(fn (Style $style) => str_contains(strtolower($style->prompt), 'full body')))->toBeTrue()
         ->and($figures->every(fn (Style $style) => str_contains(strtolower($style->prompt), 'plain seamless')))->toBeTrue()
         ->and($figures->every(fn (Style $style) => str_contains($style->prompt, 'no text')))->toBeTrue();
 });
@@ -129,9 +129,11 @@ it('describes the person chibi as a big-head vinyl toy with printable hair', fun
     $prompt = strtolower(Style::where('subject', 'person')->where('look', 'chibi')->value('prompt'));
 
     expect($prompt)
-        ->toContain('1:6 scale')
-        ->toContain('head about half')
-        ->toContain('solid glossy black round eyes')
+        ->toContain('identity anchor')
+        ->toContain('do not beautify')
+        ->toContain('oversized square-shaped head')
+        ->toContain('solid black glossy button eyes')
+        ->toContain('low plain round base')
         ->toContain('no individual strands')
         ->toContain('no flyaway hairs')
         ->toContain('3d-printable')
