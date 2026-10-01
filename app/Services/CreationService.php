@@ -79,13 +79,19 @@ class CreationService
         $copy = 'uploads/'.Str::uuid().'.jpg';
         $disk->copy($creation->source_image_path, $copy);
 
+        // Only a failed makeCreation may delete the copy: once it commits, the new creation
+        // points at the file, so a dispatch failure must leave it for the sweeper's refund.
         try {
-            return $this->startFromImage($user, $style, $copy);
+            $creation = $this->makeCreation($user, $style, $copy);
         } catch (Throwable $e) {
             $disk->delete($copy);
 
             throw $e;
         }
+
+        $this->dispatchGeneration($creation);
+
+        return $creation;
     }
 
     /**

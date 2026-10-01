@@ -71,6 +71,8 @@ class StylizationController extends Controller
             ]);
         } catch (StylizationNotReadyException) {
             throw ValidationException::withMessages(['approve' => 'This preview can no longer be approved.']);
+        } catch (InvalidImageException) {
+            throw ValidationException::withMessages(['approve' => 'This preview can no longer be used. Try again or start over.']);
         }
 
         return redirect()->route('creations.show', $creation);

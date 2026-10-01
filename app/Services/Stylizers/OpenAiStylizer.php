@@ -5,6 +5,7 @@ namespace App\Services\Stylizers;
 use App\Models\Style;
 use App\Services\ModelProviders\PermanentProviderException;
 use App\Services\ModelProviders\TransientProviderException;
+use GdImage;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
@@ -71,7 +72,7 @@ final class OpenAiStylizer implements ImageStylizer
             $encoded = $response->json('data.0.b64_json');
             $bytes = is_string($encoded) ? base64_decode($encoded, true) : false;
 
-            if ($bytes === false || @getimagesizefromstring($bytes) === false) {
+            if ($bytes === false || @getimagesizefromstring($bytes) === false || ! @imagecreatefromstring($bytes) instanceof GdImage) {
                 Log::warning('OpenAI returned no usable image.', ['status' => $response->status()]);
 
                 throw new PermanentProviderException(self::FAILED);
@@ -83,10 +84,11 @@ final class OpenAiStylizer implements ImageStylizer
         $status = $response->status();
         $code = (string) $response->json('error.code');
         $message = strtolower((string) $response->json('error.message'));
+        $type = strtolower((string) $response->json('error.type'));
 
         // Our account is the problem (bad key, no access, out of quota): refund the customer,
         // tell the operator. Only the status and error code are logged, never bodies or keys.
-        $outOfQuota = $status === 429 && str_contains($code, 'quota');
+        $outOfQuota = $status === 429 && (str_contains(strtolower($code), 'quota') || str_contains($type, 'quota') || str_contains($message, 'quota') || str_contains($message, 'billing'));
 
         if ($status === 401 || $status === 403 || $outOfQuota || $code === 'billing_hard_limit_reached') {
             Log::critical('OpenAI account problem: previews are failing.', ['status' => $status, 'code' => $code]);
@@ -102,7 +104,7 @@ final class OpenAiStylizer implements ImageStylizer
             throw new PermanentProviderException(self::REFUSED);
         }
 
-        Log::warning('OpenAI rejected an image edit request.', ['status' => $status, 'code' => $code]);
+        Log::error('OpenAI rejected an image edit request.', ['status' => $status, 'code' => $code]);
 
         throw new PermanentProviderException(self::FAILED);
     }

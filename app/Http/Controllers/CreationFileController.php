@@ -23,10 +23,19 @@ class CreationFileController extends Controller
         $disk = Storage::disk('local');
         abort_if(! $path || ! $disk->exists($path), 404);
 
+        $headers = [
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => 'sandbox',
+        ];
+
         if ($type === 'model' && $request->boolean('download')) {
-            return $disk->download($path, "creation-{$creation->id}.glb");
+            return $disk->download($path, "creation-{$creation->id}.glb", $headers);
         }
 
-        return $disk->response($path, null, ['Cache-Control' => 'private, max-age=3600']);
+        // The photo derivatives are personal: the browser must revalidate so a deleted
+        // creation's image cannot linger. The large GLB is not personal and stays cacheable.
+        $headers['Cache-Control'] = $type === 'model' ? 'private, max-age=3600' : 'private, no-cache';
+
+        return $disk->response($path, null, $headers);
     }
 }

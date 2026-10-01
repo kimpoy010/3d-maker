@@ -78,6 +78,10 @@ it('refunds the customer but alerts the operator on account problems', function 
     'bad key' => [401, ['error' => ['code' => 'invalid_api_key']]],
     'not verified or no access' => [403, ['error' => ['code' => 'model_not_found']]],
     'out of quota' => [429, ['error' => ['code' => 'insufficient_quota']]],
+    'quota by type only' => [429, ['error' => ['type' => 'insufficient_quota']]],
+    'quota by message only' => [429, ['error' => ['message' => 'You exceeded your current Quota, please check your plan.']]],
+    'billing by message only' => [429, ['error' => ['message' => 'Billing issue on this account.']]],
+    'billing hard limit' => [429, ['error' => ['code' => 'billing_hard_limit_reached']]],
 ]);
 
 it('retries later on rate limits and server errors', function (int $status) {
@@ -85,7 +89,7 @@ it('retries later on rate limits and server errors', function (int $status) {
 
     expect(fn () => (new OpenAiStylizer)->stylize($this->photo, $this->style))
         ->toThrow(TransientProviderException::class);
-})->with([429, 500, 502, 503]);
+})->with([408, 429, 500, 502, 503]);
 
 it('retries later when the connection fails or times out', function () {
     Http::fake(['api.openai.com/*' => fn () => throw new ConnectionException('timeout')]);
@@ -132,11 +136,12 @@ it('never logs the key, the prompt or image bytes', function () {
     } catch (PermanentProviderException) {
     }
 
-    Log::shouldHaveReceived('critical')->withArgs(function (string $message, array $context = []) {
-        $dump = $message.json_encode($context);
+    Log::shouldHaveReceived('critical')->once();
 
-        return ! str_contains($dump, 'test-key') && ! str_contains($dump, 'tiny vinyl figure');
-    });
+    foreach (['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'] as $level) {
+        Log::shouldNotHaveReceived($level, fn (string $message, array $context = []) => str_contains($message.json_encode($context), 'test-key')
+            || str_contains($message.json_encode($context), 'tiny vinyl figure'));
+    }
 });
 
 it('never logs the key or the prompt on any failure path', function (int $status, array $body) {
@@ -148,7 +153,7 @@ it('never logs the key or the prompt on any failure path', function (int $status
     } catch (PermanentProviderException) {
     }
 
-    foreach (['warning', 'error', 'critical'] as $level) {
+    foreach (['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'] as $level) {
         Log::shouldNotHaveReceived($level, fn (string $message, array $context = []) => str_contains($message.json_encode($context), 'test-key')
             || str_contains($message.json_encode($context), 'tiny vinyl figure'));
     }
@@ -157,3 +162,42 @@ it('never logs the key or the prompt on any failure path', function (int $status
     'bad image' => [200, ['data' => [['b64_json' => 'bm90IGFuIGltYWdl']]]],
     'bad key' => [401, ['error' => ['code' => 'invalid_api_key']]],
 ]);
+
+it('fails permanently when the image has a valid header but cannot be decoded', function () {
+    $truncated = truncatedPngBytes();
+    expect(@getimagesizefromstring($truncated))->not->toBeFalse();
+    Http::fake(['api.openai.com/*' => Http::response(['data' => [['b64_json' => base64_encode($truncated)]]], 200)]);
+
+    expect(fn () => (new OpenAiStylizer)->stylize($this->photo, $this->style))
+        ->toThrow(PermanentProviderException::class, OpenAiStylizer::FAILED);
+});
+
+it('treats the safety-system text as a refusal even without an error code', function () {
+    Http::fake(['api.openai.com/*' => Http::response(['error' => ['message' => 'Rejected by the safety system.']], 400)]);
+
+    expect(fn () => (new OpenAiStylizer)->stylize($this->photo, $this->style))
+        ->toThrow(PermanentProviderException::class, OpenAiStylizer::REFUSED);
+});
+
+it('refuses an empty prompt without sending a request', function () {
+    Http::fake();
+    $style = Style::factory()->make(['prompt' => '']);
+
+    expect(fn () => (new OpenAiStylizer)->stylize($this->photo, $style))
+        ->toThrow(PermanentProviderException::class, OpenAiStylizer::FAILED);
+
+    Http::assertNothingSent();
+});
+
+it('logs a rejected request as an error with only the status and code', function () {
+    Log::spy();
+    Http::fake(['api.openai.com/*' => Http::response(['error' => ['code' => 'invalid_value', 'message' => 'bad size']], 400)]);
+
+    try {
+        (new OpenAiStylizer)->stylize($this->photo, $this->style);
+    } catch (PermanentProviderException) {
+    }
+
+    Log::shouldHaveReceived('error')->withArgs(fn (string $message, array $context = []) => $context === ['status' => 400, 'code' => 'invalid_value'])->once();
+    Log::shouldNotHaveReceived('warning');
+});

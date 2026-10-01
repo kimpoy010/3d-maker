@@ -13,6 +13,7 @@ use App\Models\CreditLedgerEntry;
 use App\Models\Style;
 use App\Models\Stylization;
 use App\Models\User;
+use App\Services\CreationService;
 use App\Services\Credits\CreditService;
 use App\Services\StylizationService;
 use Illuminate\Support\Facades\Queue;
@@ -154,5 +155,29 @@ describe('retry', function () {
         expect(fn () => $this->service->retry($this->user, $stylization))->toThrow(InsufficientCreditsException::class);
 
         expect($stylization->fresh()->status)->toBe(StylizationStatus::Ready);
+    });
+});
+
+describe('approve when queueing fails', function () {
+    it('still deletes the leftover photo files and lets the exception propagate', function () {
+        $this->app->bind(CreationService::class, fn () => new class(app(CreditService::class)) extends CreationService
+        {
+            public function dispatchGeneration(Creation $creation): void
+            {
+                throw new RuntimeException('queue down');
+            }
+        });
+        $stylization = ($this->makeReady)();
+
+        expect(fn () => app(StylizationService::class)->approve($this->user, $stylization))
+            ->toThrow(RuntimeException::class, 'queue down');
+
+        $creation = Creation::firstOrFail();
+        expect($creation->status)->toBe(CreationStatus::Queued)
+            ->and($stylization->fresh()->status)->toBe(StylizationStatus::Approved)
+            ->and($stylization->fresh()->creation_id)->toBe($creation->id);
+        Storage::disk('local')->assertMissing('stylizations/r/original.jpg');
+        Storage::disk('local')->assertMissing('stylizations/r/result.png');
+        Storage::disk('local')->assertExists($creation->source_image_path);
     });
 });

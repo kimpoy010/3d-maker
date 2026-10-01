@@ -151,8 +151,13 @@ class StylizationService
         }
 
         if ($created) {
-            $this->creations->dispatchGeneration($creation);
-            $disk->delete($leftovers);
+            // The row paths are already null, so the leftover photo must go even if queueing
+            // throws; the sweeper refunds a creation that was never queued.
+            try {
+                $this->creations->dispatchGeneration($creation);
+            } finally {
+                $disk->delete($leftovers);
+            }
         }
 
         return $creation;

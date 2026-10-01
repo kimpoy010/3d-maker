@@ -1,5 +1,8 @@
 <?php
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
 /*
 |--------------------------------------------------------------------------
 | Test Case
@@ -11,8 +14,8 @@
 |
 */
 
-pest()->extend(Tests\TestCase::class)
-    ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
+pest()->extend(TestCase::class)
+    ->use(RefreshDatabase::class)
     ->in('Feature');
 
 /*
@@ -56,4 +59,22 @@ function fakeJpegBytes(int $width = 800, int $height = 800): string
     imagejpeg($image, null, 90);
 
     return (string) ob_get_clean();
+}
+
+/** A PNG whose header is valid but whose body is cut off, so GD cannot decode it. */
+function truncatedPngBytes(int $width = 64, int $height = 96): string
+{
+    $image = imagecreatetruecolor($width, $height);
+
+    for ($x = 0; $x < $width; $x++) {
+        for ($y = 0; $y < $height; $y++) {
+            imagesetpixel($image, $x, $y, imagecolorallocate($image, random_int(0, 255), random_int(0, 255), random_int(0, 255)));
+        }
+    }
+
+    ob_start();
+    imagepng($image);
+    $png = (string) ob_get_clean();
+
+    return substr($png, 0, intdiv(strlen($png), 2));
 }

@@ -216,7 +216,8 @@ describe('files', function () {
             $this->actingAs($this->user)->get("/stylizations/{$stylization->id}/files/{$type}")
                 ->assertOk()
                 ->assertHeader('X-Content-Type-Options', 'nosniff')
-                ->assertHeader('Cache-Control', 'no-cache, private');
+                ->assertHeader('Cache-Control', 'no-cache, private')
+                ->assertHeader('Content-Security-Policy', 'sandbox');
         }
     });
 });
@@ -337,3 +338,19 @@ it('throttles the generate routes at 10 requests a minute per user', function (s
     'approve' => ['/stylizations/999999/approve'],
     'retry' => ['/stylizations/999999/retry'],
 ]);
+
+describe('approve with a corrupt result file', function () {
+    it('explains instead of erroring and leaves everything untouched', function () {
+        $stylization = ($this->makeReady)();
+        Storage::disk('local')->put('stylizations/h/result.png', truncatedPngBytes());
+        $before = ($this->snapshot)($stylization);
+
+        $this->actingAs($this->user)->post("/stylizations/{$stylization->id}/approve")
+            ->assertStatus(302)
+            ->assertSessionHasErrors(['approve' => 'This preview can no longer be used. Try again or start over.']);
+
+        expect($stylization->fresh()->status)->toBe(StylizationStatus::Ready)
+            ->and(Creation::count())->toBe(0)
+            ->and(($this->snapshot)($stylization->fresh()))->toBe($before);
+    });
+});

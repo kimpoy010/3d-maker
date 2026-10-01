@@ -80,3 +80,27 @@ it('serves the public demo model', function () {
     $this->get('/samples/demo.glb')->assertOk();
     expect(substr($this->get('/samples/demo.glb')->getContent(), 0, 4))->toBe('glTF');
 });
+
+it('serves creation files with safe, privacy-aware headers', function () {
+    $id = $this->creation->id;
+    Storage::disk('local')->put('creations/1/thumb.png', 'png-bytes');
+    $this->creation->update(['thumbnail_path' => 'creations/1/thumb.png']);
+
+    foreach (['source', 'thumbnail'] as $type) {
+        $this->actingAs($this->owner)->get("/creations/{$id}/files/{$type}")
+            ->assertOk()
+            ->assertHeader('Cache-Control', 'no-cache, private')
+            ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertHeader('Content-Security-Policy', 'sandbox');
+    }
+
+    foreach (['model', 'model?download=1'] as $type) {
+        $this->actingAs($this->owner)->get("/creations/{$id}/files/{$type}")
+            ->assertOk()
+            ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertHeader('Content-Security-Policy', 'sandbox');
+    }
+
+    $cache = $this->actingAs($this->owner)->get("/creations/{$id}/files/model")->headers->get('Cache-Control');
+    expect($cache)->toContain('max-age=3600')->toContain('private');
+});

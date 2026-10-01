@@ -79,3 +79,22 @@ it('creates a creation from a stored image without dispatching until asked', fun
     $this->service->dispatchGeneration($creation);
     Queue::assertPushed(GenerateCreation::class, 1);
 });
+
+it('keeps the new creation and its image when only the dispatch fails', function () {
+    $this->app->bind(CreationService::class, fn () => new class(app(CreditService::class)) extends CreationService
+    {
+        public function dispatchGeneration(Creation $creation): void
+        {
+            throw new RuntimeException('queue down');
+        }
+    });
+    $failed = ($this->makeFailed)();
+
+    expect(fn () => app(CreationService::class)->retryFailed($this->user, $failed))
+        ->toThrow(RuntimeException::class, 'queue down');
+
+    $new = Creation::where('id', '!=', $failed->id)->firstOrFail();
+    expect($new->status)->toBe(CreationStatus::Queued)
+        ->and($this->credits->balance($this->user))->toBe(15);
+    Storage::disk('local')->assertExists($new->source_image_path);
+});

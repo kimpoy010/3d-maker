@@ -24,6 +24,7 @@ class StylizationFileController extends Controller
         return $disk->response($path, null, [
             'Cache-Control' => 'private, no-cache',
             'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => 'sandbox',
         ]);
     }
 }
