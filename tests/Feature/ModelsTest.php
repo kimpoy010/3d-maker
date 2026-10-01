@@ -167,3 +167,39 @@ it('describes the person clay as a hand-modelled fondant figure, not a vinyl toy
         ->not->toContain('button eyes')
         ->not->toContain('funko');
 });
+
+/** Keys ("subject.look") of the styles whose lowercased prompt fails the given check. */
+function stylesFailing(callable $check, ?array $subjects = null): array
+{
+    return Style::all()
+        ->when($subjects, fn ($styles) => $styles->filter(fn (Style $style) => in_array($style->subject->value, $subjects, true)))
+        ->reject(fn (Style $style) => $check(strtolower($style->prompt)))
+        ->map(fn (Style $style) => "{$style->subject->value}.{$style->look}")
+        ->values()
+        ->all();
+}
+
+it('gives every style a complete, printable, photo-anchored prompt', function () {
+    $this->seed(StyleSeeder::class);
+
+    expect(Style::count())->toBe(11)
+        ->and(stylesFailing(fn (string $p) => str_contains($p, '3d-printable')))->toBe([])
+        ->and(stylesFailing(fn (string $p) => str_contains($p, 'plain seamless')))->toBe([])
+        ->and(stylesFailing(fn (string $p) => str_contains($p, 'no text')))->toBe([])
+        ->and(stylesFailing(fn (string $p) => str_contains($p, 'identity anchor') || str_contains($p, 'provided photo')))->toBe([])
+        ->and(Style::pluck('prompt')->unique())->toHaveCount(11);
+});
+
+it('asks people and pets for thick sculpted hair or fur', function () {
+    $this->seed(StyleSeeder::class);
+
+    expect(stylesFailing(fn (string $p) => str_contains($p, 'no flyaway hairs'), ['person', 'pet']))->toBe([]);
+});
+
+it('keeps pets and objects sturdy and printable', function () {
+    $this->seed(StyleSeeder::class);
+
+    expect(stylesFailing(fn (string $p) => str_contains($p, 'tail'), ['pet']))->toBe([])
+        ->and(stylesFailing(fn (string $p) => str_contains($p, 'at least 2 mm'), ['object']))->toBe([])
+        ->and(stylesFailing(fn (string $p) => str_contains($p, 'readable text'), ['object']))->toBe([]);
+});
