@@ -17,6 +17,7 @@ let camera: THREE.PerspectiveCamera | null = null;
 let controls: OrbitControls | null = null;
 let model: THREE.Object3D | null = null;
 let frame = 0;
+let loadId = 0;
 let resizeObserver: ResizeObserver | null = null;
 let lights: THREE.Light[] = [];
 
@@ -60,18 +61,24 @@ function disposeModel() {
         const mesh = node as THREE.Mesh;
         if (!mesh.isMesh) return;
         mesh.geometry.dispose();
-        (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach((m) => m.dispose());
+        (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach((m) => {
+            for (const value of Object.values(m)) {
+                if (value instanceof THREE.Texture) value.dispose();
+            }
+            m.dispose();
+        });
     });
     model = null;
 }
 
 function load(url: string) {
+    const id = ++loadId;
     state.value = 'loading';
     disposeModel();
     new GLTFLoader().load(
         url,
         (gltf) => {
-            if (!scene) return;
+            if (id !== loadId || !scene) return;
             model = gltf.scene;
             scene.add(model);
             frameModel(model);
@@ -79,6 +86,7 @@ function load(url: string) {
         },
         undefined,
         () => {
+            if (id !== loadId) return;
             state.value = 'error';
         },
     );
@@ -112,18 +120,20 @@ onMounted(() => {
     tick();
 });
 
-watch(() => props.src, load);
+watch(() => props.src, (url) => load(url));
 watch(preset, applyPreset);
 watch(rotating, (value) => {
     if (controls) controls.autoRotate = value;
 });
 
 onBeforeUnmount(() => {
+    loadId++;
     cancelAnimationFrame(frame);
     resizeObserver?.disconnect();
     disposeModel();
     controls?.dispose();
     renderer?.dispose();
+    renderer?.forceContextLoss();
     renderer?.domElement.remove();
     renderer = scene = camera = controls = null;
 });
