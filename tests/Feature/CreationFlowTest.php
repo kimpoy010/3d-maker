@@ -107,3 +107,19 @@ it('rejects inactive styles', function () {
         'style_id' => $inactive->id,
     ])->assertSessionHasErrors('style_id');
 });
+
+it('rejects photos over 40 megapixels without decoding them', function () {
+    Queue::fake();
+
+    // Header-only PNG claiming 8000x5001 (40.008 MP): enough for getimagesize, never decoded.
+    $ihdr = pack('NN', 8000, 5001)."\x08\x02\x00\x00\x00";
+    $chunk = fn (string $type, string $data) => pack('N', strlen($data)).$type.$data.pack('N', crc32($type.$data));
+    $png = "\x89PNG\r\n\x1a\n".$chunk('IHDR', $ihdr).$chunk('IEND', '');
+
+    $this->actingAs($this->user)->post('/creations', [
+        'photo' => UploadedFile::fake()->createWithContent('huge.png', $png),
+        'style_id' => $this->style->id,
+    ])->assertSessionHasErrors(['photo' => 'The photo is too large. Use an image under 40 megapixels.']);
+
+    expect(Creation::count())->toBe(0);
+});

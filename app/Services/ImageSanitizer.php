@@ -27,8 +27,12 @@ class ImageSanitizer
             throw new InvalidImageException('The file is not a valid image.');
         }
 
-        $source = $this->applyOrientation($source, $contents);
+        // Read the orientation from the original bytes, then scale BEFORE rotating so the
+        // rotation (which allocates a second canvas) only ever touches at most 2048 px.
+        $angle = $this->orientationAngle($contents);
         $canvas = $this->flattenAndScale($source);
+        unset($source);
+        $canvas = $this->rotate($canvas, $angle);
 
         ob_start();
         imagejpeg($canvas, null, 90);
@@ -36,20 +40,24 @@ class ImageSanitizer
         return (string) ob_get_clean();
     }
 
-    private function applyOrientation(GdImage $image, string $contents): GdImage
+    private function orientationAngle(string $contents): int
     {
         if (! function_exists('exif_read_data') || ! str_starts_with($contents, "\xFF\xD8")) {
-            return $image;
+            return 0;
         }
 
         $exif = @exif_read_data('data://image/jpeg;base64,'.base64_encode($contents));
-        $angle = match ($exif['Orientation'] ?? 1) {
+
+        return match ($exif['Orientation'] ?? 1) {
             3 => 180,
             6 => -90,
             8 => 90,
             default => 0,
         };
+    }
 
+    private function rotate(GdImage $image, int $angle): GdImage
+    {
         if ($angle === 0) {
             return $image;
         }
