@@ -13,6 +13,7 @@ use App\Services\ModelProviders\PermanentProviderException;
 use App\Services\ModelProviders\ProviderResult;
 use App\Services\ModelProviders\ProviderState;
 use App\Services\ModelProviders\TransientProviderException;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function () {
@@ -155,7 +156,8 @@ it('fails immediately and refunds on permanent provider errors', function () {
     $creation->refresh();
     expect($creation->status)->toBe(CreationStatus::Failed)
         ->and($creation->error)->toBe('Image rejected.')
-        ->and($this->credits->balance($this->user))->toBe(20);
+        ->and($this->credits->balance($this->user))->toBe(20)
+        ->and(CreditLedgerEntry::where('reason', LedgerReason::Refund)->count())->toBe(1);
 });
 
 it('marks the creation failed and refunds if the job itself blows up', function () {
@@ -165,4 +167,121 @@ it('marks the creation failed and refunds if the job itself blows up', function 
 
     expect($creation->refresh()->status)->toBe(CreationStatus::Failed)
         ->and($this->credits->balance($this->user))->toBe(20);
+});
+
+it('leaves the creation non-terminal when the refund throws and completes it exactly once on re-run', function () {
+    config(['models.mock.fail_rate' => 1]);
+    $creation = ($this->makeCreation)();
+
+    $this->app->bind(CreditService::class, fn () => new class extends CreditService
+    {
+        public static bool $thrown = false;
+
+        public function refund(Creation $creation): ?CreditLedgerEntry
+        {
+            if (! self::$thrown) {
+                self::$thrown = true;
+                throw new RuntimeException('db down');
+            }
+
+            return parent::refund($creation);
+        }
+    });
+
+    expect(fn () => ($this->runJob)($creation))->toThrow(RuntimeException::class);
+    expect($creation->refresh()->status->isFinished())->toBeFalse()
+        ->and($this->credits->balance($this->user))->toBe(15);
+
+    ($this->runJob)($creation);
+    ($this->runJob)($creation);
+
+    expect($creation->refresh()->status)->toBe(CreationStatus::Failed)
+        ->and($this->credits->balance($this->user))->toBe(20)
+        ->and(CreditLedgerEntry::where('reason', LedgerReason::Refund)->count())->toBe(1);
+});
+
+it('does not fail or refund a creation that another run already succeeded', function () {
+    $creation = ($this->makeCreation)();
+    $id = $creation->id;
+
+    $this->app->bind(ModelProvider::class, fn () => new class($id) implements ModelProvider
+    {
+        public function __construct(private int $id) {}
+
+        public function start(string $imagePath, Style $style): string
+        {
+            return 'job-1';
+        }
+
+        public function status(string $providerJobId): ProviderResult
+        {
+            // Another copy of the job finishes the creation while this one is mid-run.
+            Creation::whereKey($this->id)->update(['status' => 'succeeded', 'model_path' => 'x.glb']);
+
+            return new ProviderResult(ProviderState::Failed, error: 'late failure');
+        }
+
+        public function download(string $url): string
+        {
+            return '';
+        }
+    });
+
+    ($this->runJob)($creation);
+
+    expect($creation->refresh()->status)->toBe(CreationStatus::Succeeded)
+        ->and($creation->error)->toBeNull()
+        ->and($this->credits->balance($this->user))->toBe(15)
+        ->and(CreditLedgerEntry::where('reason', LedgerReason::Refund)->count())->toBe(0);
+});
+
+it('does not flip a failed creation to succeeded and removes the files it stored', function () {
+    $creation = ($this->makeCreation)();
+    $id = $creation->id;
+    $credits = $this->credits;
+    $user = $this->user;
+
+    $this->app->bind(ModelProvider::class, fn () => new class($id) implements ModelProvider
+    {
+        public function __construct(private int $id) {}
+
+        public function start(string $imagePath, Style $style): string
+        {
+            return 'job-1';
+        }
+
+        public function status(string $providerJobId): ProviderResult
+        {
+            return new ProviderResult(ProviderState::Succeeded, modelUrl: 'm', thumbnailUrl: 't');
+        }
+
+        public function download(string $url): string
+        {
+            // Another copy times the creation out and refunds while we download.
+            $creation = Creation::find($this->id);
+            if (! $creation->status->isFinished()) {
+                Creation::whereKey($this->id)->update(['status' => 'failed', 'error' => 'Generation timed out.']);
+                app(CreditService::class)->refund($creation);
+            }
+
+            return 'data';
+        }
+    });
+
+    ($this->runJob)($creation);
+
+    expect($creation->refresh()->status)->toBe(CreationStatus::Failed)
+        ->and($creation->model_path)->toBeNull()
+        ->and($credits->balance($user))->toBe(20);
+    Storage::disk('local')->assertMissing("creations/{$id}/model.glb");
+    Storage::disk('local')->assertMissing("creations/{$id}/thumbnail.png");
+});
+
+it('prevents overlapping runs for the same creation', function () {
+    $middleware = (new GenerateCreation(42))->middleware();
+
+    expect($middleware)->toHaveCount(1)
+        ->and($middleware[0])->toBeInstanceOf(WithoutOverlapping::class)
+        ->and($middleware[0]->key)->toBe(42)
+        ->and($middleware[0]->expiresAfter)->toBeLessThan(90);
 });

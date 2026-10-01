@@ -12,6 +12,8 @@ use App\Services\ModelProviders\TransientProviderException;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 
@@ -22,13 +24,33 @@ class GenerateCreation implements ShouldQueue
     /** Seconds to wait before retrying after a transient provider error. */
     private const TRANSIENT_RETRY_SECONDS = 10;
 
+    private const FINISHED = ['succeeded', 'failed'];
+
     /** Give up after this many unexpected (non-provider) exceptions. */
     public int $maxExceptions = 3;
 
     /** @var list<int> */
     public array $backoff = [5, 15, 30];
 
+    /**
+     * Hard per-attempt limit for the worker. Must stay below the overlap lock's
+     * expiry, which must stay below the queue connection's retry_after (90s).
+     */
+    public int $timeout = 60;
+
     public function __construct(public int $creationId) {}
+
+    /**
+     * One run per creation at a time. The lock expires (80s) after the worker's
+     * timeout (60s) but before retry_after (90s), so a crashed run frees the lock
+     * before the queue hands the job to another worker.
+     *
+     * @return list<object>
+     */
+    public function middleware(): array
+    {
+        return [(new WithoutOverlapping($this->creationId))->releaseAfter(5)->expireAfter(80)];
+    }
 
     /**
      * Polling re-releases the job, which counts as an attempt, so the retry window
@@ -111,18 +133,46 @@ class GenerateCreation implements ShouldQueue
             $disk->put($thumbPath, $provider->download($thumbnailUrl));
         }
 
-        $creation->forceFill([
-            'status' => CreationStatus::Succeeded,
-            'model_path' => $modelPath,
-            'thumbnail_path' => $thumbPath,
-            'progress' => 100,
-            'error' => null,
-        ])->save();
+        $updated = Creation::whereKey($creation->id)
+            ->whereNotIn('status', self::FINISHED)
+            ->update([
+                'status' => CreationStatus::Succeeded->value,
+                'model_path' => $modelPath,
+                'thumbnail_path' => $thumbPath,
+                'progress' => 100,
+                'error' => null,
+                'updated_at' => now(),
+            ]);
+
+        if ($updated === 0) {
+            // Another run already finished this creation. If it failed (and was refunded),
+            // drop what we stored; if it succeeded, the identical files are its own.
+            if (Creation::whereKey($creation->id)->first()?->status === CreationStatus::Failed) {
+                $disk->delete(array_filter([$modelPath, $thumbPath]));
+            }
+
+            return;
+        }
+
+        $creation->refresh();
     }
 
+    /**
+     * Fail and refund atomically. Conditional on the creation not being finished, and the
+     * refund shares the transaction: if it throws, the status rolls back and the job retries.
+     */
     private function markFailed(Creation $creation, string $message, CreditService $credits): void
     {
-        $creation->forceFill(['status' => CreationStatus::Failed, 'error' => $message])->save();
-        $credits->refund($creation);
+        DB::transaction(function () use ($creation, $message, $credits) {
+            $updated = Creation::whereKey($creation->id)
+                ->whereNotIn('status', self::FINISHED)
+                ->update(['status' => CreationStatus::Failed->value, 'error' => $message, 'updated_at' => now()]);
+
+            if ($updated > 0) {
+                $credits->refund($creation);
+            }
+        });
+
+        $creation->refresh();
     }
 }
