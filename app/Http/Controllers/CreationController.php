@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\StylizationStatus;
 use App\Exceptions\InsufficientCreditsException;
-use App\Exceptions\InvalidImageException;
-use App\Http\Requests\StoreCreationRequest;
+use App\Exceptions\StylizationNotReadyException;
 use App\Http\Resources\CreationResource;
+use App\Http\Resources\StylizationResource;
 use App\Models\Creation;
 use App\Models\Style;
+use App\Models\Stylization;
 use App\Services\CreationService;
 use App\Services\Credits\CreditService;
 use Illuminate\Http\RedirectResponse;
@@ -32,24 +34,8 @@ class CreationController extends Controller
                     'credit_cost' => $s->credit_cost,
                 ])->values(),
             'balance' => $credits->balance($request->user()),
+            'restyle_cost' => (int) config('credits.restyle_cost'),
         ]);
-    }
-
-    public function store(StoreCreationRequest $request, CreationService $creations): RedirectResponse
-    {
-        $style = Style::active()->findOrFail($request->integer('style_id'));
-
-        try {
-            $creation = $creations->submit($request->user(), $request->file('photo'), $style);
-        } catch (InsufficientCreditsException $e) {
-            throw ValidationException::withMessages([
-                'style_id' => "Not enough credits: this style costs {$e->required} and you have {$e->balance}.",
-            ]);
-        } catch (InvalidImageException) {
-            throw ValidationException::withMessages(['photo' => 'We could not read that image. Try another photo.']);
-        }
-
-        return redirect()->route('creations.show', $creation);
     }
 
     public function index(Request $request): Response
@@ -60,9 +46,33 @@ class CreationController extends Controller
             ->limit(60)
             ->get();
 
+        $previews = Stylization::with('style')
+            ->where('user_id', $request->user()->id)
+            ->where('status', StylizationStatus::Ready->value)
+            ->latest()
+            ->get();
+
         return Inertia::render('creations/Index', [
             'creations' => $creations->map(fn (Creation $c) => CreationResource::make($c)->resolve())->values(),
+            'previews' => $previews->map(fn (Stylization $s) => StylizationResource::make($s)->resolve())->values(),
         ]);
+    }
+
+    public function retry(Request $request, Creation $creation, CreationService $creations): RedirectResponse
+    {
+        Gate::authorize('retry', $creation);
+
+        try {
+            $new = $creations->retryFailed($request->user(), $creation);
+        } catch (InsufficientCreditsException $e) {
+            throw ValidationException::withMessages([
+                'retry' => "Not enough credits: building the 3D model costs {$e->required} and you have {$e->balance}.",
+            ]);
+        } catch (StylizationNotReadyException) {
+            throw ValidationException::withMessages(['retry' => 'This creation cannot be retried.']);
+        }
+
+        return redirect()->route('creations.show', $new);
     }
 
     public function show(Creation $creation): Response

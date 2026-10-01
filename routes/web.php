@@ -19,10 +19,10 @@ Route::middleware('auth')->group(function () {
     Route::redirect('dashboard', '/creations')->name('dashboard');
 
     Route::get('create', [CreationController::class, 'create'])->name('creations.create');
-    Route::post('creations', [CreationController::class, 'store'])->middleware('throttle:generate')->name('creations.store');
     Route::get('creations', [CreationController::class, 'index'])->name('creations.index');
     Route::get('creations/{creation}', [CreationController::class, 'show'])->name('creations.show');
     Route::delete('creations/{creation}', [CreationController::class, 'destroy'])->name('creations.destroy');
+    Route::post('creations/{creation}/retry', [CreationController::class, 'retry'])->middleware('throttle:generate')->name('creations.retry');
     Route::get('creations/{creation}/files/{type}', CreationFileController::class)
         ->whereIn('type', ['source', 'model', 'thumbnail'])
         ->name('creations.files');

@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Enums\CreationStatus;
 use App\Models\Creation;
 use App\Models\User;
 
@@ -16,5 +17,11 @@ class CreationPolicy
     public function delete(User $user, Creation $creation): bool
     {
         return $this->view($user, $creation) && $creation->status->isFinished();
+    }
+
+    /** Only a failed creation can be re-run from its stored image. */
+    public function retry(User $user, Creation $creation): bool
+    {
+        return $this->view($user, $creation) && $creation->status === CreationStatus::Failed;
     }
 }
