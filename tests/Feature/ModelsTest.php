@@ -122,3 +122,20 @@ it('keeps the person sleepy prompt generic and printable', function () {
         ->not->toContain('hoop')
         ->not->toContain('11 inches');
 });
+
+it('describes the person chibi as a big-head vinyl toy with printable hair', function () {
+    $this->seed(StyleSeeder::class);
+
+    $prompt = strtolower(Style::where('subject', 'person')->where('look', 'chibi')->value('prompt'));
+
+    expect($prompt)
+        ->toContain('1:6 scale')
+        ->toContain('head about half')
+        ->toContain('solid glossy black round eyes')
+        ->toContain('no individual strands')
+        ->toContain('no flyaway hairs')
+        ->toContain('3d-printable')
+        ->not->toContain('auburn')
+        ->not->toContain('hooded')
+        ->not->toContain('funko');
+});
