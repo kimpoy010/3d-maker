@@ -34,8 +34,9 @@ Reference contract: Use the uploaded image as the identity anchor for the subjec
 
 Transform this subject into a 3D hyper-realistic stylized collectible vinyl toy figure in the style of an oversized-head designer vinyl collectible.
 
-FIGURE DETAILS:
-- Chibi proportions: an oversized square-shaped head with rounded corners, a tiny body, and large, solid black glossy button eyes.
+FIGURE DETAILS (CRITICAL ANATOMY):
+- Anatomy: the figure has no visible neck. The oversized head sits directly on top of the tiny shoulders, with the chin completely hiding any neck joint.
+- Chibi proportions: an oversized square-shaped head with rounded corners, an incredibly tiny body, and large, solid black glossy button eyes.
 - Replicate the exact hair style, hair colour and facial hair (if applicable) from the reference image, rendered as smooth vinyl: one thick sculpted shape with a few large clumps and rounded tips, with no individual strands, no flyaway hairs and no fine grooves or fibres.
 - Replicate the exact clothing, shoes and distinct accessories from the photo, in their original colours, as simplified chunky sculpted forms.
 

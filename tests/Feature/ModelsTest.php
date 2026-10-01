@@ -131,6 +131,8 @@ it('describes the person chibi as a big-head vinyl toy with printable hair', fun
     expect($prompt)
         ->toContain('identity anchor')
         ->toContain('do not beautify')
+        ->toContain('no visible neck')
+        ->toContain('directly on top of the tiny shoulders')
         ->toContain('oversized square-shaped head')
         ->toContain('solid black glossy button eyes')
         ->toContain('low plain round base')
