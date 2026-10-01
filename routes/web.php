@@ -4,6 +4,8 @@ use App\Http\Controllers\CreationController;
 use App\Http\Controllers\CreationFileController;
 use App\Http\Controllers\CreditController;
 use App\Http\Controllers\SampleController;
+use App\Http\Controllers\StylizationController;
+use App\Http\Controllers\StylizationFileController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -24,6 +26,15 @@ Route::middleware('auth')->group(function () {
     Route::get('creations/{creation}/files/{type}', CreationFileController::class)
         ->whereIn('type', ['source', 'model', 'thumbnail'])
         ->name('creations.files');
+
+    Route::post('stylizations', [StylizationController::class, 'store'])->middleware('throttle:generate')->name('stylizations.store');
+    Route::get('stylizations/{stylization}', [StylizationController::class, 'show'])->name('stylizations.show');
+    Route::post('stylizations/{stylization}/approve', [StylizationController::class, 'approve'])->middleware('throttle:generate')->name('stylizations.approve');
+    Route::post('stylizations/{stylization}/retry', [StylizationController::class, 'retry'])->middleware('throttle:generate')->name('stylizations.retry');
+    Route::delete('stylizations/{stylization}', [StylizationController::class, 'destroy'])->name('stylizations.destroy');
+    Route::get('stylizations/{stylization}/files/{type}', StylizationFileController::class)
+        ->whereIn('type', ['original', 'result'])
+        ->name('stylizations.files');
 
     Route::get('credits', [CreditController::class, 'index'])->name('credits.index');
     Route::post('credits/topup', [CreditController::class, 'topup'])->name('credits.topup');
