@@ -19,8 +19,10 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('credit_ledger', function (Blueprint $table) {
+            // FK first: on MySQL the unique index backs the FK and cannot be dropped before it.
+            $table->dropForeign(['stylization_id']);
             $table->dropUnique(['stylization_id', 'reason']);
-            $table->dropConstrainedForeignId('stylization_id');
+            $table->dropColumn('stylization_id');
         });
     }
 };

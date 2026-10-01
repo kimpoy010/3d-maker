@@ -49,3 +49,32 @@ it('stores a print model path on creations', function () {
 
     expect($creation->fresh()->print_model_path)->toBe('creations/1/print.stl');
 });
+
+it('does not collide ledger rows that have no stylization', function () {
+    $user = User::factory()->create();
+    $row = fn () => CreditLedgerEntry::create(['user_id' => $user->id, 'delta' => 1, 'reason' => LedgerReason::Topup]);
+
+    $row();
+    $row();
+
+    expect(CreditLedgerEntry::where('user_id', $user->id)->where('reason', LedgerReason::Topup)->count())->toBe(2);
+});
+
+it('nulls dependent references when a stylization or creation is deleted', function () {
+    DB::statement('PRAGMA foreign_keys = ON');
+
+    $creation = Creation::factory()->create();
+    $stylization = Stylization::factory()->create(['creation_id' => $creation->id]);
+    $entry = CreditLedgerEntry::create([
+        'user_id' => $stylization->user_id,
+        'delta' => -1,
+        'reason' => LedgerReason::Stylize,
+        'stylization_id' => $stylization->id,
+    ]);
+
+    $creation->delete();
+    expect($stylization->fresh()->creation_id)->toBeNull();
+
+    $stylization->delete();
+    expect($entry->fresh()->stylization_id)->toBeNull();
+});
