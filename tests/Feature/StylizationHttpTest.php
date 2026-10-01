@@ -216,7 +216,7 @@ describe('files', function () {
             $this->actingAs($this->user)->get("/stylizations/{$stylization->id}/files/{$type}")
                 ->assertOk()
                 ->assertHeader('X-Content-Type-Options', 'nosniff')
-                ->assertHeader('Cache-Control', 'max-age=3600, private');
+                ->assertHeader('Cache-Control', 'no-cache, private');
         }
     });
 });

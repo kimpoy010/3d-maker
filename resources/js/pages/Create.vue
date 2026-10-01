@@ -142,7 +142,7 @@ onBeforeUnmount(() => {
             <!-- 3. Review -->
             <section class="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div class="text-sm">
-                    <div>Balance: <strong>{{ balance }}</strong> credits</div>
+                    <div>Balance: <strong>{{ credits(balance) }}</strong></div>
                     <div v-if="selected" class="text-muted-foreground">
                         The preview costs {{ credits(restyle_cost) }}. Building the 3D model afterwards costs {{ credits(cost) }}. Credits are refunded if a step fails.
                     </div>

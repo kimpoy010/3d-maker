@@ -35,6 +35,13 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
     { title: `${props.stylization.style.name} ${props.stylization.style.subject} preview`, href: `/stylizations/${props.stylization.id}` },
 ]);
 
+const liveText = computed(() => {
+    if (working.value) return 'Making your preview…';
+    if (ready.value) return 'Your preview is ready';
+    if (failed.value) return "We couldn't make a preview";
+    return 'This preview is no longer available';
+});
+
 const polling = usePolling({ only: ['stylization'], active: () => working.value });
 
 function approve() {
@@ -60,17 +67,20 @@ function discard() {
                 <p class="mt-1 text-sm text-muted-foreground">Check the look before we build the 3D model.</p>
             </header>
 
+            <p class="sr-only" role="status" aria-live="polite">{{ liveText }}</p>
+
             <!-- making the preview -->
-            <section v-if="working" class="grid gap-4 sm:grid-cols-2" aria-live="polite">
+            <section v-if="working" class="grid gap-4 sm:grid-cols-2">
                 <img v-if="stylization.urls.original" :src="stylization.urls.original" alt="Your original photo" class="aspect-[2/3] w-full rounded-xl border object-cover" />
                 <div class="flex flex-col justify-center gap-3">
                     <p class="font-medium">Making your preview…</p>
                     <div class="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Preview progress">
-                        <div class="h-full w-1/3 animate-pulse rounded-full bg-primary" />
+                        <div class="h-full w-1/3 motion-safe:animate-pulse rounded-full bg-primary" />
                     </div>
                     <p class="text-sm text-muted-foreground">Usually under a minute. You can leave this page; the preview will wait for you under My Creations.</p>
                     <p v-if="polling.slow.value" class="text-sm text-amber-700 dark:text-amber-300" role="status">
                         This is taking longer than expected. If it doesn't finish soon your credit is refunded automatically.
+                        <button type="button" class="underline" @click="polling.retry()">Check again</button>
                     </p>
                     <p v-if="polling.failed.value" class="text-sm text-destructive" role="alert">
                         We couldn't check on the preview just now.
@@ -94,20 +104,21 @@ function discard() {
 
                 <div class="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between">
                     <p class="text-sm">
-                        Balance: <strong>{{ balance }}</strong> credits.
+                        Balance: <strong>{{ credits(balance) }}</strong>.
                         <span class="text-muted-foreground">Building the 3D model costs {{ credits(buildCost) }}. It's refunded if the build fails.</span>
                     </p>
                     <div class="flex flex-wrap items-center gap-2">
-                        <Button v-if="canBuild" :disabled="approveForm.processing" @click="approve">
+                        <Button v-if="canBuild" :disabled="approveForm.processing || retryForm.processing" @click="approve">
                             {{ approveForm.processing ? 'Starting…' : `Build 3D model (${credits(buildCost)})` }}
                         </Button>
                         <Button v-else as-child><Link href="/credits">Add credits to build</Link></Button>
-                        <Button variant="outline" :disabled="!canRetry || retryForm.processing" @click="retry">
+                        <Button variant="outline" :disabled="!canRetry || retryForm.processing || approveForm.processing" @click="retry">
                             Try again ({{ credits(restyle_cost) }})
                         </Button>
                     </div>
                 </div>
 
+                <p v-if="!canRetry" class="text-sm text-muted-foreground">Not enough credits for another preview. <Link href="/credits" class="underline">Add credits</Link></p>
                 <p v-if="approveForm.errors.approve" class="text-sm text-destructive" role="alert">{{ approveForm.errors.approve }}</p>
                 <p v-if="retryForm.errors.retry" class="text-sm text-destructive" role="alert">{{ retryForm.errors.retry }}</p>
 
@@ -126,6 +137,7 @@ function discard() {
                     <Button as-child><Link href="/create">Try another photo</Link></Button>
                     <Button variant="outline" :disabled="!canRetry || retryForm.processing" @click="retry">Try again ({{ credits(restyle_cost) }})</Button>
                 </div>
+                <p v-if="!canRetry" class="text-sm text-muted-foreground">Not enough credits for another preview. <Link href="/credits" class="underline">Add credits</Link></p>
                 <p v-if="retryForm.errors.retry" class="text-sm text-destructive">{{ retryForm.errors.retry }}</p>
             </section>
 

@@ -24,6 +24,9 @@ export function usePolling(options: PollingOptions) {
     let timer: ReturnType<typeof setInterval> | null = null;
     let startedAt = 0;
     let removers: Array<() => void> = [];
+    // True only while one of OUR poll requests is in flight, so the global invalid/exception
+    // handlers below never swallow the error of an unrelated request (approve, retry, discard).
+    let pollInFlight = false;
 
     function stop() {
         if (timer) clearInterval(timer);
@@ -39,7 +42,19 @@ export function usePolling(options: PollingOptions) {
                 slow.value = true;
                 return stop();
             }
-            router.reload({ only });
+            router.reload({
+                only,
+                onStart: () => {
+                    pollInFlight = true;
+                },
+                // Inertia fires invalid/exception before finish, so the flag is still set when they run.
+                onFinish: () => {
+                    pollInFlight = false;
+                },
+                onCancel: () => {
+                    pollInFlight = false;
+                },
+            });
         }, intervalMs);
     }
 
@@ -55,11 +70,13 @@ export function usePolling(options: PollingOptions) {
         // Cancelling them keeps its generic error modal from popping up every 3 seconds.
         removers = [
             router.on('invalid', (event) => {
+                if (!pollInFlight) return;
                 event.preventDefault();
                 failed.value = true;
                 stop();
             }),
             router.on('exception', (event) => {
+                if (!pollInFlight) return;
                 event.preventDefault();
                 failed.value = true;
                 stop();
