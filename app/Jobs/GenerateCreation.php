@@ -14,6 +14,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 
@@ -135,7 +136,9 @@ class GenerateCreation implements ShouldQueue
 
         $printPath = null;
 
-        if ($printUrl) {
+        if (! $printUrl) {
+            Log::warning('Provider finished without a print model', ['creation_id' => $creation->id]);
+        } else {
             $printPath = "creations/{$creation->id}/print.stl";
             $disk->put($printPath, $provider->download($printUrl));
         }

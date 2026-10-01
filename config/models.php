@@ -11,9 +11,11 @@ return [
     'poll_seconds' => 3,
 
     'meshy' => [
-        // Per HTTP call. Must stay well below the GenerateCreation job timeout (60 s), because
-        // one run can download up to three files.
+        // Total time budget per HTTP call (Guzzle's timeout covers the whole request). A
+        // successful GenerateCreation run makes one status call plus three downloads, so the
+        // worst case is 20 + 3 x 12 = 56 s, which stays under the job's 60 s worker timeout.
         'timeout_seconds' => 20,
+        'download_timeout_seconds' => 12,
         'default_polycount' => 30000,
     ],
 

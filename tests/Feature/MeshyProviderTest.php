@@ -65,6 +65,7 @@ describe('start', function () {
         'rate limit' => [429, TransientProviderException::class],
         'server error' => [500, TransientProviderException::class],
         'unavailable' => [503, TransientProviderException::class],
+        'request timeout' => [408, TransientProviderException::class],
     ]);
 
     it('refunds the customer but alerts the operator on account problems', function (int $status) {
@@ -112,6 +113,58 @@ describe('start', function () {
         Http::assertNothingSent();
         Log::shouldHaveReceived('critical')->once();
     });
+
+    it('never follows redirects from the api', function () {
+        Http::fake(['api.meshy.ai/*' => Http::response('', 302, ['Location' => 'http://169.254.169.254/latest/meta-data/'])]);
+
+        expect(fn () => $this->provider->start($this->image, $this->style))->toThrow(PermanentProviderException::class);
+        Http::assertSentCount(1);
+    });
+
+    it('asks the http client not to follow redirects', function () {
+        $options = null;
+        Http::fake(['api.meshy.ai/*' => function ($request, $o) use (&$options) {
+            $options = $o;
+
+            return Http::response(['result' => 't'], 202);
+        }]);
+
+        $this->provider->start($this->image, $this->style);
+
+        expect($options['allow_redirects'])->toBeFalse()
+            ->and($options['timeout'])->toBe(20);
+    });
+
+    it('does not put the key or image bytes in the log when a request is rejected', function () {
+        Log::spy();
+        Http::fake(['api.meshy.ai/*' => Http::response(['message' => 'x'], 400)]);
+
+        try {
+            $this->provider->start($this->image, $this->style);
+        } catch (PermanentProviderException) {
+        }
+
+        Log::shouldHaveReceived('warning')->withArgs(function (string $message, array $context = []) {
+            $logged = $message.json_encode($context);
+
+            return ! str_contains($logged, 'meshy-key') && ! str_contains($logged, 'base64');
+        })->once();
+    });
+
+    it('clamps or replaces an unusable target polycount', function (mixed $configured, int $sent) {
+        Http::fake(['api.meshy.ai/*' => Http::response(['result' => 't'], 202)]);
+
+        $this->provider->start($this->image, Style::factory()->make(['provider_params' => ['target_faces' => $configured]]));
+
+        Http::assertSent(fn (Request $r) => $r->data()['target_polycount'] === $sent);
+    })->with([
+        'valid' => [20000, 20000],
+        'zero' => [0, 30000],
+        'negative' => [-5, 30000],
+        'not a number' => ['abc', 30000],
+        'too high' => [1000000000, 300000],
+        'too low' => [50, 100],
+    ]);
 
     it('never logs the key or image bytes', function () {
         Log::spy();
@@ -175,10 +228,46 @@ describe('status', function () {
         Log::shouldHaveReceived('warning')->once();
     });
 
-    it('treats an unknown task as failed', function () {
+    it('treats an unknown task as failed and logs it', function () {
+        Log::spy();
         Http::fake(['api.meshy.ai/*' => Http::response([], 404)]);
 
         expect($this->provider->status('gone')->state)->toBe(ProviderState::Failed);
+        Log::shouldHaveReceived('warning')->withArgs(fn (string $m, array $c = []) => $m === 'Meshy task not found' && $c === ['task' => 'gone'])->once();
+    });
+
+    it('retries later when the request times out', function () {
+        Http::fake(['api.meshy.ai/*' => Http::response([], 408)]);
+
+        expect(fn () => $this->provider->status('t'))->toThrow(TransientProviderException::class);
+    });
+
+    it('stays pending but logs an unknown status word', function (array $body, string $logged) {
+        Log::spy();
+        Http::fake(['api.meshy.ai/*' => Http::response($body, 200)]);
+
+        expect($this->provider->status('t')->state)->toBe(ProviderState::Pending);
+        Log::shouldHaveReceived('warning')->withArgs(fn (string $m, array $c = []) => $m === 'Meshy returned an unknown task status' && $c === ['status' => $logged])->once();
+    })->with([
+        'new word' => [['status' => 'QUEUED_FOREVER'], 'QUEUED_FOREVER'],
+        'missing status' => [[], ''],
+        'very long word' => [['status' => str_repeat('x', 100)], str_repeat('x', 40)],
+    ]);
+
+    it('does not log a normal pending status as unknown', function () {
+        Log::spy();
+        Http::fake(['api.meshy.ai/*' => Http::response(['status' => 'PENDING'], 200)]);
+
+        $this->provider->status('t');
+
+        Log::shouldNotHaveReceived('warning');
+    });
+
+    it('never follows redirects from the api', function () {
+        Http::fake(['api.meshy.ai/*' => Http::response('', 302, ['Location' => 'http://169.254.169.254/latest/meta-data/'])]);
+
+        expect(fn () => $this->provider->status('t'))->toThrow(PermanentProviderException::class);
+        Http::assertSentCount(1);
     });
 
     it('retries later on server errors', function () {
@@ -195,10 +284,33 @@ describe('status', function () {
 });
 
 describe('download', function () {
-    it('fetches files from meshy asset hosts', function () {
+    it('fetches files from meshy asset hosts without sending the api key', function () {
         Http::fake(['assets.meshy.ai/*' => Http::response('file-bytes', 200)]);
 
         expect($this->provider->download('https://assets.meshy.ai/a/model.glb?Expires=1'))->toBe('file-bytes');
+        Http::assertSent(fn (Request $r) => ! $r->hasHeader('Authorization'));
+    });
+
+    it('never follows redirects, so a meshy url cannot bounce to an internal address', function () {
+        Http::fake(['assets.meshy.ai/*' => Http::response('', 302, ['Location' => 'http://169.254.169.254/latest/meta-data/'])]);
+
+        expect(fn () => $this->provider->download('https://assets.meshy.ai/a/model.glb'))->toThrow(PermanentProviderException::class);
+        Http::assertSentCount(1);
+    });
+
+    it('uses the shorter download timeout and refuses redirects', function () {
+        config(['models.meshy.download_timeout_seconds' => 12]);
+        $options = null;
+        Http::fake(['assets.meshy.ai/*' => function ($request, $o) use (&$options) {
+            $options = $o;
+
+            return Http::response('ok', 200);
+        }]);
+
+        $this->provider->download('https://assets.meshy.ai/a/model.glb');
+
+        expect($options['timeout'])->toBe(12)
+            ->and($options['allow_redirects'])->toBeFalse();
     });
 
     it('refuses any other host or scheme without making a request', function (string $url) {
@@ -223,6 +335,7 @@ describe('download', function () {
         'expired or forbidden link' => [403, PermanentProviderException::class],
         'missing file' => [404, PermanentProviderException::class],
         'service unavailable' => [503, TransientProviderException::class],
+        'request timeout' => [408, TransientProviderException::class],
     ]);
 
     it('retries later when the download connection fails', function () {

@@ -31,7 +31,7 @@ final class MeshyProvider implements ModelProvider
             'should_texture' => true,
             'enable_pbr' => false,
             'should_remesh' => true,
-            'target_polycount' => (int) ($style->provider_params['target_faces'] ?? config('models.meshy.default_polycount')),
+            'target_polycount' => $this->polycount($style),
             'target_formats' => ['glb', 'stl'],
         ];
 
@@ -58,6 +58,8 @@ final class MeshyProvider implements ModelProvider
         $response = $this->send(fn (PendingRequest $http) => $http->get(self::BASE.'/image-to-3d/'.rawurlencode($providerJobId)));
 
         if ($response->status() === 404) {
+            Log::warning('Meshy task not found', ['task' => $providerJobId]);
+
             return new ProviderResult(ProviderState::Failed, error: self::BUILD_FAILED);
         }
 
@@ -76,8 +78,33 @@ final class MeshyProvider implements ModelProvider
             ),
             'FAILED', 'CANCELED' => $this->failed($providerJobId, $response),
             'IN_PROGRESS' => new ProviderResult(ProviderState::Running, progress: $progress),
-            default => new ProviderResult(ProviderState::Pending, progress: $progress),
+            'PENDING' => new ProviderResult(ProviderState::Pending, progress: $progress),
+            default => $this->unknownStatus($response, $progress),
         };
+    }
+
+    private function unknownStatus(Response $response, ?int $progress): ProviderResult
+    {
+        // Keep polling (the job's deadline bounds it), but tell the operator the API changed.
+        $word = $response->json('status');
+
+        Log::warning('Meshy returned an unknown task status', [
+            'status' => substr(is_scalar($word) ? (string) $word : '', 0, 40),
+        ]);
+
+        return new ProviderResult(ProviderState::Pending, progress: $progress);
+    }
+
+    /** The style's face budget, kept inside what Meshy accepts (100 to 300,000). */
+    private function polycount(Style $style): int
+    {
+        $configured = $style->provider_params['target_faces'] ?? null;
+
+        if (! is_numeric($configured) || (int) $configured <= 0) {
+            return (int) config('models.meshy.default_polycount');
+        }
+
+        return max(100, min(300000, (int) $configured));
     }
 
     /** Meshy asset links expire, so the caller always downloads. Only Meshy hosts over https. */
@@ -88,7 +115,7 @@ final class MeshyProvider implements ModelProvider
         }
 
         try {
-            $response = Http::connectTimeout(10)->timeout((int) config('models.meshy.timeout_seconds'))->get($url);
+            $response = Http::withoutRedirecting()->connectTimeout(10)->timeout((int) config('models.meshy.download_timeout_seconds'))->get($url);
         } catch (ConnectionException $e) {
             throw new TransientProviderException('The 3D service could not be reached.', 0, $e);
         }
@@ -137,7 +164,7 @@ final class MeshyProvider implements ModelProvider
         }
 
         try {
-            return $call(Http::withToken($key)->connectTimeout(10)->timeout((int) config('models.meshy.timeout_seconds')));
+            return $call(Http::withToken($key)->withoutRedirecting()->connectTimeout(10)->timeout((int) config('models.meshy.timeout_seconds')));
         } catch (ConnectionException $e) {
             throw new TransientProviderException('The 3D service could not be reached.', 0, $e);
         }

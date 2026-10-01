@@ -15,6 +15,7 @@ use App\Services\ModelProviders\ProviderResult;
 use App\Services\ModelProviders\ProviderState;
 use App\Services\ModelProviders\TransientProviderException;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function () {
@@ -317,4 +318,27 @@ it('removes all three stored files when a losing run finds the creation already 
     Storage::disk('local')->assertMissing("creations/{$creation->id}/model.glb");
     Storage::disk('local')->assertMissing("creations/{$creation->id}/thumbnail.png");
     Storage::disk('local')->assertMissing("creations/{$creation->id}/print.stl");
+});
+
+it('still succeeds without a print model but warns the operator', function () {
+    Log::spy();
+    $this->app->bind(ModelProvider::class, fn () => new class extends MockProvider
+    {
+        public function status(string $providerJobId): ProviderResult
+        {
+            $result = parent::status($providerJobId);
+
+            return new ProviderResult($result->state, $result->modelUrl, $result->thumbnailUrl, $result->error, $result->progress);
+        }
+    });
+    $creation = ($this->makeCreation)();
+
+    ($this->runJob)($creation);
+
+    $creation->refresh();
+    expect($creation->status)->toBe(CreationStatus::Succeeded)
+        ->and($creation->print_model_path)->toBeNull();
+    Log::shouldHaveReceived('warning')
+        ->withArgs(fn (string $m, array $c = []) => $m === 'Provider finished without a print model' && $c === ['creation_id' => $creation->id])
+        ->once();
 });
