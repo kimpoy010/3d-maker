@@ -108,6 +108,33 @@ describe('store', function () {
         ])->assertSessionHasErrors('style_id');
     });
 
+    it('rejects photos over 10 MB and stores, charges and creates nothing', function () {
+        $this->actingAs($this->user)->post('/stylizations', [
+            'photo' => UploadedFile::fake()->image('b.jpg', 800, 800)->size(11000),
+            'style_id' => $this->style->id,
+        ])->assertSessionHasErrors(['photo' => 'The photo must be 10 MB or smaller.']);
+
+        expect(Stylization::count())->toBe(0)
+            ->and(Storage::disk('local')->allFiles())->toBe([])
+            ->and($this->credits->balance($this->user))->toBe(20);
+    });
+
+    it('rejects photos over 40 megapixels without decoding them', function () {
+        // Header-only PNG claiming 8000x5001 (40.008 MP): enough for getimagesize, never decoded.
+        $ihdr = pack('NN', 8000, 5001)."\x08\x02\x00\x00\x00";
+        $chunk = fn (string $type, string $data) => pack('N', strlen($data)).$type.$data.pack('N', crc32($type.$data));
+        $png = "\x89PNG\r\n\x1a\n".$chunk('IHDR', $ihdr).$chunk('IEND', '');
+
+        $this->actingAs($this->user)->post('/stylizations', [
+            'photo' => UploadedFile::fake()->createWithContent('huge.png', $png),
+            'style_id' => $this->style->id,
+        ])->assertSessionHasErrors(['photo' => 'The photo is too large. Use an image under 40 megapixels.']);
+
+        expect(Stylization::count())->toBe(0)
+            ->and(Storage::disk('local')->allFiles())->toBe([])
+            ->and($this->credits->balance($this->user))->toBe(20);
+    });
+
     it('reports an unaffordable preview on the style field and creates nothing', function () {
         config(['credits.restyle_cost' => 50]);
 
@@ -296,3 +323,17 @@ describe('destroy', function () {
         Storage::disk('local')->assertExists('stylizations/h/result.png');
     });
 });
+
+it('throttles the generate routes at 10 requests a minute per user', function (string $path) {
+    $this->actingAs($this->user);
+
+    foreach (range(1, 10) as $i) {
+        expect($this->post($path)->getStatusCode())->not->toBe(429);
+    }
+
+    $this->post($path)->assertStatus(429);
+})->with([
+    'store' => ['/stylizations'],
+    'approve' => ['/stylizations/999999/approve'],
+    'retry' => ['/stylizations/999999/retry'],
+]);

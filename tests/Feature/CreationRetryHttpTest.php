@@ -84,3 +84,13 @@ it('explains an unaffordable retry and changes nothing', function () {
         ->and(Storage::disk('local')->allFiles())->toBe($files);
     Queue::assertNothingPushed();
 });
+
+it('throttles retries at 10 requests a minute per user', function () {
+    $this->actingAs($this->user);
+
+    foreach (range(1, 10) as $i) {
+        expect($this->post('/creations/999999/retry')->getStatusCode())->not->toBe(429);
+    }
+
+    $this->post('/creations/999999/retry')->assertStatus(429);
+});
