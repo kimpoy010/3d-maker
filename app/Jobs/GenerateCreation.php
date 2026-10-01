@@ -1,0 +1,128 @@
+<?php
+
+namespace App\Jobs;
+
+use App\Enums\CreationStatus;
+use App\Models\Creation;
+use App\Services\Credits\CreditService;
+use App\Services\ModelProviders\ModelProvider;
+use App\Services\ModelProviders\PermanentProviderException;
+use App\Services\ModelProviders\ProviderState;
+use App\Services\ModelProviders\TransientProviderException;
+use Carbon\CarbonInterface;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Storage;
+use Throwable;
+
+class GenerateCreation implements ShouldQueue
+{
+    use Queueable;
+
+    /** Seconds to wait before retrying after a transient provider error. */
+    private const TRANSIENT_RETRY_SECONDS = 10;
+
+    /** Give up after this many unexpected (non-provider) exceptions. */
+    public int $maxExceptions = 3;
+
+    /** @var list<int> */
+    public array $backoff = [5, 15, 30];
+
+    public function __construct(public int $creationId) {}
+
+    /**
+     * Polling re-releases the job, which counts as an attempt, so the retry window
+     * (not a fixed attempt count) bounds the job. Our own deadline check in handle()
+     * fires first; this is the safety net.
+     */
+    public function retryUntil(): CarbonInterface
+    {
+        return now()->addSeconds((int) config('models.timeout_seconds') + 120);
+    }
+
+    public function handle(ModelProvider $provider, CreditService $credits): void
+    {
+        $creation = Creation::with('style')->find($this->creationId);
+
+        if (! $creation || $creation->status->isFinished()) {
+            return;
+        }
+
+        if ($creation->created_at->addSeconds((int) config('models.timeout_seconds'))->isPast()) {
+            $this->markFailed($creation, 'Generation timed out.', $credits);
+
+            return;
+        }
+
+        try {
+            if (! $creation->provider_job_id) {
+                $creation->provider_job_id = $provider->start(
+                    Storage::disk('local')->path($creation->source_image_path),
+                    $creation->style,
+                );
+                $creation->status = CreationStatus::Processing;
+                $creation->save();
+            }
+
+            $result = $provider->status($creation->provider_job_id);
+
+            match ($result->state) {
+                ProviderState::Pending, ProviderState::Running => $this->stillWorking($creation, $result->progress),
+                ProviderState::Failed => $this->markFailed($creation, $result->error ?? 'The model could not be generated.', $credits),
+                ProviderState::Succeeded => $this->succeed($creation, $provider, $result->modelUrl, $result->thumbnailUrl),
+            };
+        } catch (TransientProviderException) {
+            $this->release(self::TRANSIENT_RETRY_SECONDS);
+        } catch (PermanentProviderException $e) {
+            $this->markFailed($creation, $e->getMessage(), $credits);
+        }
+    }
+
+    /** Called by the queue when the job exhausts its retries or throws unexpectedly. */
+    public function failed(?Throwable $exception): void
+    {
+        $creation = Creation::find($this->creationId);
+
+        if ($creation && ! $creation->status->isFinished()) {
+            $this->markFailed($creation, 'Generation failed unexpectedly.', app(CreditService::class));
+        }
+    }
+
+    private function stillWorking(Creation $creation, ?int $progress): void
+    {
+        $creation->forceFill(['status' => CreationStatus::Processing, 'progress' => $progress])->save();
+        $this->release((int) config('models.poll_seconds'));
+    }
+
+    private function succeed(Creation $creation, ModelProvider $provider, ?string $modelUrl, ?string $thumbnailUrl): void
+    {
+        if (! $modelUrl) {
+            throw new PermanentProviderException('The provider finished without a model.');
+        }
+
+        $disk = Storage::disk('local');
+        $modelPath = "creations/{$creation->id}/model.glb";
+        $thumbPath = null;
+
+        $disk->put($modelPath, $provider->download($modelUrl));
+
+        if ($thumbnailUrl) {
+            $thumbPath = "creations/{$creation->id}/thumbnail.png";
+            $disk->put($thumbPath, $provider->download($thumbnailUrl));
+        }
+
+        $creation->forceFill([
+            'status' => CreationStatus::Succeeded,
+            'model_path' => $modelPath,
+            'thumbnail_path' => $thumbPath,
+            'progress' => 100,
+            'error' => null,
+        ])->save();
+    }
+
+    private function markFailed(Creation $creation, string $message, CreditService $credits): void
+    {
+        $creation->forceFill(['status' => CreationStatus::Failed, 'error' => $message])->save();
+        $credits->refund($creation);
+    }
+}
