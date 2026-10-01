@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/AppLayout.vue';
 import type { BreadcrumbItem } from '@/types';
 
-type Entry = { id: number; delta: number; reason: 'signup' | 'topup' | 'generation' | 'refund'; created_at: string };
+type Entry = { id: number; delta: number; reason: 'signup' | 'topup' | 'generation' | 'refund' | 'stylize' | 'stylize_refund'; created_at: string };
 
 defineProps<{ balance: number; ledger: Entry[]; topup: { enabled: boolean; amount: number } }>();
 
@@ -15,6 +15,8 @@ const label: Record<Entry['reason'], string> = {
     topup: 'Credits added',
     generation: 'Model generation',
     refund: 'Refund (failed generation)',
+    stylize: 'Preview',
+    stylize_refund: 'Preview refund',
 };
 const busy = ref(false);
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });

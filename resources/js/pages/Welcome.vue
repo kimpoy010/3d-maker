@@ -12,8 +12,9 @@ const user = computed(() => page.props.auth.user);
 
 const steps = [
     { title: 'Upload', body: 'Add a clear photo of a person, pet, or favourite object.' },
-    { title: 'Pick a look', body: 'Realistic, cartoon, clay, or chibi — choose the style you like.' },
-    { title: 'Get your 3D model', body: 'Spin it around in your browser and download it to print or share.' },
+    { title: 'Pick a style', body: 'Chibi, clay, sleepy, realistic or cartoon: choose the look you like.' },
+    { title: 'Preview and approve', body: 'See your figure as a picture first. Happy with it? Approve it, or try again.' },
+    { title: 'Get your 3D model', body: 'Spin it around in your browser and download it, ready for printing.' },
 ];
 </script>
 
@@ -51,7 +52,7 @@ const steps = [
 
             <section class="mx-auto max-w-6xl px-4 py-12">
                 <h2 class="mb-8 text-2xl font-semibold tracking-tight">How it works</h2>
-                <ol class="grid gap-6 md:grid-cols-3">
+                <ol class="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
                     <li v-for="(step, i) in steps" :key="step.title" class="rounded-xl border p-5">
                         <span class="text-sm text-muted-foreground">Step {{ i + 1 }}</span>
                         <h3 class="mt-1 font-medium">{{ step.title }}</h3>

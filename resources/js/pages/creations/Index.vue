@@ -12,7 +12,13 @@ type Creation = {
     urls: { source: string; thumbnail: string | null };
 };
 
-defineProps<{ creations: Creation[] }>();
+type Preview = {
+    id: number;
+    style: { name: string; subject: string };
+    urls: { result: string | null };
+};
+
+defineProps<{ creations: Creation[]; previews: Preview[] }>();
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'My Creations', href: '/creations' }];
 const badge: Record<Creation['status'], string> = {
@@ -34,12 +40,27 @@ const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { date
                 <Button as-child><Link href="/create">New creation</Link></Button>
             </header>
 
-            <div v-if="creations.length === 0" class="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+            <section v-if="previews.length" class="space-y-3" aria-labelledby="previews-heading">
+                <h2 id="previews-heading" class="text-sm font-medium">Previews waiting for your approval</h2>
+                <div class="flex gap-3 overflow-x-auto pb-1">
+                    <Link
+                        v-for="p in previews"
+                        :key="p.id"
+                        :href="`/stylizations/${p.id}`"
+                        class="w-32 shrink-0 overflow-hidden rounded-xl border transition-shadow hover:shadow-md"
+                    >
+                        <img :src="p.urls.result ?? ''" :alt="`${p.style.name} ${p.style.subject} preview`" class="aspect-[2/3] w-full object-cover" loading="lazy" />
+                        <span class="block truncate p-2 text-xs capitalize">{{ p.style.name }} {{ p.style.subject }} · Continue</span>
+                    </Link>
+                </div>
+            </section>
+
+            <div v-if="creations.length === 0 && previews.length === 0" class="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
                 You haven't made anything yet.
                 <Link href="/create" class="underline">Create your first 3D model</Link>.
             </div>
 
-            <div v-else class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+            <div v-else-if="creations.length > 0" class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
                 <Link
                     v-for="c in creations"
                     :key="c.id"
