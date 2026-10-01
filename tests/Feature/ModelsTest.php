@@ -72,3 +72,13 @@ it('writes different prompts for different looks', function () {
     expect($person['chibi'])->not->toBe($person['clay'])
         ->and($person['chibi'])->toContain('chibi');
 });
+
+it('offers a sleepy look for people and pets', function () {
+    $this->seed(StyleSeeder::class);
+
+    $sleepy = Style::where('look', 'sleepy')->orderBy('subject')->get();
+
+    expect($sleepy->pluck('subject')->map->value->all())->toBe(['person', 'pet'])
+        ->and($sleepy->every(fn (Style $style) => str_contains($style->prompt, 'sleepy')))->toBeTrue()
+        ->and($sleepy->every(fn (Style $style) => $style->credit_cost === 5))->toBeTrue();
+});
