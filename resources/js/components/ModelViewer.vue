@@ -78,6 +78,7 @@ function disposeModel() {
 }
 
 function load(url: string) {
+    if (!scene) return;
     const id = ++loadId;
     state.value = 'loading';
     disposeModel();
@@ -107,7 +108,14 @@ function tick() {
 onMounted(() => {
     if (!container.value) return;
 
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    try {
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    } catch {
+        // No WebGL (blocked, unsupported, or out of contexts): show the error overlay.
+        renderer = null;
+        state.value = 'error';
+        return;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.value.appendChild(renderer.domElement);
 
