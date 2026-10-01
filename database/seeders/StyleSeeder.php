@@ -34,7 +34,7 @@ Reference contract: Use the uploaded image as the identity anchor for the subjec
 Transform this subject into a handmade fondant-clay figure, like a hand-modelled sugarpaste cake-topper miniature crafted from soft polymer clay.
 
 FIGURE DETAILS:
-- Proportions: a charming storybook figure with a large rounded head about one third of the total height, a small slender body, simple small black dot eyes, a tiny nose, a small gentle smile and soft rosy cheeks.
+- Proportions: natural, proportionate doll-like anatomy, about five heads tall: the head is about one fifth of the total height, with normal shoulders, a slim but sturdy body and normal-length arms and legs. Not a chibi, not a bobblehead, not a toy with an enlarged head. The face is simple and sweet: small black dot eyes, a tiny nose, a small gentle smile and soft rosy cheeks.
 - Material: smooth, soft, matte sugarpaste-like clay with a gentle satin sheen, rounded forms and soft colour gradients. Hand-modelled softness, no fingerprint texture, no glossy plastic.
 - Hair: the hairstyle and colour from the photo, modelled as thick, smooth, rope-like locks with broad rounded sections. No thin strands and no flyaway hairs.
 - Clothing: the outfit from the photo in its original colours, as smooth folded clay with a few tiny hand-modelled decorative details such as piping, buttons, small flowers or beads, kept small but chunky.
