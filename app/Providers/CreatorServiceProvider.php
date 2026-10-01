@@ -6,6 +6,7 @@ use App\Services\ModelProviders\MockProvider;
 use App\Services\ModelProviders\ModelProvider;
 use App\Services\Stylizers\ImageStylizer;
 use App\Services\Stylizers\MockStylizer;
+use App\Services\Stylizers\OpenAiStylizer;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -35,6 +36,7 @@ class CreatorServiceProvider extends ServiceProvider
 
             return match ($name) {
                 'mock' => new MockStylizer,
+                'openai' => app(OpenAiStylizer::class),
                 default => throw new InvalidArgumentException("Unknown stylizer provider [{$name}]."),
             };
         });
