@@ -11,6 +11,7 @@
     },
     "devDependencies": {
         "@eslint/js": "^9.19.0",
+        "@types/three": "^0.186.0",
         "@vue/eslint-config-typescript": "^14.3.0",
         "eslint": "^9.17.0",
         "eslint-config-prettier": "^10.0.1",
@@ -39,6 +40,7 @@
         "tailwind-merge": "^2.5.5",
         "tailwindcss": "^3.4.1",
         "tailwindcss-animate": "^1.0.7",
+        "three": "^0.186.1",
         "typescript": "^5.2.2",
         "vite": "^6.0.3",
         "vue": "^3.5.13",
