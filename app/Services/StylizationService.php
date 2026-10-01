@@ -120,7 +120,7 @@ class StylizationService
      */
     public function markFailed(int $id, string $message): bool
     {
-        return DB::transaction(function () use ($id, $message) {
+        $failed = DB::transaction(function () use ($id, $message) {
             $updated = Stylization::whereKey($id)
                 ->whereIn('status', $this->working())
                 ->update(['status' => StylizationStatus::Failed->value, 'error' => $message, 'updated_at' => now()]);
@@ -133,6 +133,17 @@ class StylizationService
 
             return true;
         });
+
+        if ($failed) {
+            // A crashed run may have stored a result the row never recorded; drop that orphan.
+            try {
+                Storage::disk('local')->delete("stylizations/{$id}/result.png");
+            } catch (Throwable) {
+                // best effort: the refund has already committed
+            }
+        }
+
+        return $failed;
     }
 
     /**

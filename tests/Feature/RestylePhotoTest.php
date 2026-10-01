@@ -160,3 +160,38 @@ it('allows one run per stylization at a time and keeps the timing invariant', fu
         ->and($job->timeout)->toBeLessThan($lock->expiresAfter)
         ->and($lock->expiresAfter)->toBeLessThan((int) config('queue.connections.database.retry_after'));
 });
+
+it('keeps a result file that a winning run already stored', function () {
+    $this->app->bind(ImageStylizer::class, fn () => new class implements ImageStylizer
+    {
+        public function stylize(string $photoPath, Style $style): string
+        {
+            // Simulate another run finishing first: it marks the row ready and stores the file.
+            $id = Stylization::query()->value('id');
+            Storage::disk('local')->put("stylizations/{$id}/result.png", 'winner');
+            Stylization::query()->update([
+                'status' => StylizationStatus::Ready->value,
+                'result_image_path' => "stylizations/{$id}/result.png",
+            ]);
+
+            return 'loser';
+        }
+    });
+    $stylization = ($this->makeStylization)();
+
+    ($this->runJob)($stylization);
+
+    expect($stylization->fresh()->status)->toBe(StylizationStatus::Ready);
+    Storage::disk('local')->assertExists("stylizations/{$stylization->id}/result.png");
+});
+
+it('finishes a preview that is already processing, as after a transient release', function () {
+    $stylization = ($this->makeStylization)(['status' => StylizationStatus::Processing]);
+
+    ($this->runJob)($stylization);
+
+    $fresh = $stylization->fresh();
+    expect($fresh->status)->toBe(StylizationStatus::Ready)
+        ->and($this->credits->balance($this->user))->toBe(9);
+    Storage::disk('local')->assertExists($fresh->result_image_path);
+});

@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\StylizationStatus;
 use App\Models\Stylization;
 use App\Services\ModelProviders\PermanentProviderException;
 use App\Services\ModelProviders\TransientProviderException;
@@ -79,9 +80,14 @@ class RestylePhoto implements ShouldQueue
         $resultPath = "stylizations/{$stylization->id}/result.png";
         $disk->put($resultPath, $png);
 
-        // Lost the race (swept, or already finished): drop what we stored.
+        // Lost the race. The path is per-stylization, so only drop the file if the row ended
+        // up failed or discarded; if another run made it ready, the file is that run's own.
         if (! $stylizations->markReady($stylization->id, $resultPath)) {
-            $disk->delete($resultPath);
+            $status = Stylization::whereKey($stylization->id)->value('status');
+
+            if (in_array($status, [StylizationStatus::Failed, StylizationStatus::Discarded], true)) {
+                $disk->delete($resultPath);
+            }
         }
     }
 

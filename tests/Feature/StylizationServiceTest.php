@@ -166,4 +166,58 @@ describe('state changes', function () {
         expect($this->service->discard($this->stylization->fresh()))->toBeFalse()
             ->and($this->stylization->fresh()->status)->toBe(StylizationStatus::Queued);
     });
+
+    it('keeps the files of a preview that is still being made', function () {
+        Storage::disk('local')->put('stylizations/x/original.jpg', 'o');
+        $this->stylization->update(['source_image_path' => 'stylizations/x/original.jpg']);
+
+        expect($this->service->discard($this->stylization->fresh()))->toBeFalse();
+
+        Storage::disk('local')->assertExists('stylizations/x/original.jpg');
+        expect($this->stylization->fresh()->source_image_path)->toBe('stylizations/x/original.jpg');
+    });
+
+    it('discards a failed preview and deletes its files', function () {
+        Storage::disk('local')->put('stylizations/x/original.jpg', 'o');
+        $this->stylization->update(['source_image_path' => 'stylizations/x/original.jpg']);
+        $this->service->markFailed($this->stylization->id, 'nope');
+
+        expect($this->service->discard($this->stylization->fresh()))->toBeTrue()
+            ->and($this->stylization->fresh()->status)->toBe(StylizationStatus::Discarded);
+        Storage::disk('local')->assertMissing('stylizations/x/original.jpg');
+    });
+
+    it('deletes an orphaned result file when a preview fails', function () {
+        $path = "stylizations/{$this->stylization->id}/result.png";
+        Storage::disk('local')->put($path, 'orphan');
+        $this->service->markProcessing($this->stylization->id);
+
+        expect($this->service->markFailed($this->stylization->id, 'late'))->toBeTrue();
+
+        Storage::disk('local')->assertMissing($path);
+    });
+
+    it('does not delete the result file when the preview was not failed by this call', function () {
+        $path = "stylizations/{$this->stylization->id}/result.png";
+        Storage::disk('local')->put($path, 'real');
+        $this->service->markReady($this->stylization->id, $path);
+
+        expect($this->service->markFailed($this->stylization->id, 'late'))->toBeFalse();
+
+        Storage::disk('local')->assertExists($path);
+    });
+});
+
+it('counts failed and discarded previews toward the daily limit', function () {
+    Queue::fake();
+    config(['stylizer.daily_limit' => 2]);
+
+    $a = $this->service->create($this->user, ($this->photo)(), $this->style);
+    $b = $this->service->create($this->user, ($this->photo)(), $this->style);
+    $this->service->markFailed($a->id, 'x');
+    $this->service->markFailed($b->id, 'x');
+    $this->service->discard($b->fresh());
+
+    expect(fn () => $this->service->create($this->user, ($this->photo)(), $this->style))
+        ->toThrow(DailyLimitReachedException::class);
 });
