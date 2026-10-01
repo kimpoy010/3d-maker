@@ -8,7 +8,7 @@ import type { BreadcrumbItem } from '@/types';
 type Subject = 'person' | 'pet' | 'object';
 type StyleOption = { id: number; subject: Subject; name: string; look: string; credit_cost: number };
 
-const props = defineProps<{ styles: StyleOption[]; balance: number }>();
+const props = defineProps<{ styles: StyleOption[]; balance: number; restyle_cost: number }>();
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Create', href: '/create' }];
 const subjects: { value: Subject; label: string }[] = [
@@ -28,7 +28,9 @@ const clientError = ref<string | null>(null);
 const visibleStyles = computed(() => props.styles.filter((s) => s.subject === subject.value));
 const selected = computed(() => props.styles.find((s) => s.id === form.style_id) ?? null);
 const cost = computed(() => selected.value?.credit_cost ?? 0);
-const canAfford = computed(() => props.balance >= cost.value);
+const canAfford = computed(() => props.balance >= props.restyle_cost);
+const lowForBuild = computed(() => !!selected.value && props.balance < props.restyle_cost + cost.value);
+const credits = (n: number) => `${n} credit${n === 1 ? '' : 's'}`;
 const canSubmit = computed(() => !!form.photo && !!selected.value && canAfford.value && !form.processing);
 
 function setPhoto(file: File | undefined) {
@@ -62,7 +64,7 @@ function selectSubject(value: Subject) {
 }
 
 function submit() {
-    form.post('/creations', { forceFormData: true });
+    form.post('/stylizations', { forceFormData: true });
 }
 
 onBeforeUnmount(() => {
@@ -76,8 +78,8 @@ onBeforeUnmount(() => {
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="mx-auto flex w-full max-w-4xl flex-col gap-8 p-4 md:p-6">
             <header>
-                <h1 class="text-2xl font-semibold tracking-tight">Turn a photo into a 3D model</h1>
-                <p class="mt-1 text-sm text-muted-foreground">Upload a photo, choose a style, and we'll build a 3D model you can view and download.</p>
+                <h1 class="text-2xl font-semibold tracking-tight">Turn a photo into a 3D figure</h1>
+                <p class="mt-1 text-sm text-muted-foreground">Upload a photo and choose a style. We'll show you a preview first, then build the 3D model once you approve it.</p>
             </header>
 
             <!-- 1. Photo -->
@@ -98,6 +100,7 @@ onBeforeUnmount(() => {
                     </template>
                 </label>
                 <p class="text-xs text-muted-foreground">Tip: a front-facing photo with good lighting and a plain background gives the best results.</p>
+                <p class="text-xs text-muted-foreground">Your photo is sent to our AI partners (OpenAI and Meshy) to make your figure, and deleted from our servers once you approve the preview.</p>
                 <p v-if="clientError || form.errors.photo" class="text-sm text-destructive">{{ clientError ?? form.errors.photo }}</p>
             </section>
 
@@ -129,7 +132,7 @@ onBeforeUnmount(() => {
                         @click="form.style_id = style.id"
                     >
                         <span class="block font-medium">{{ style.name }}</span>
-                        <span class="mt-1 block text-xs text-muted-foreground">{{ style.credit_cost }} credits</span>
+                        <span class="mt-1 block text-xs text-muted-foreground">{{ style.credit_cost }} credits to build</span>
                     </button>
                 </div>
                 <p v-if="visibleStyles.length === 0" class="text-sm text-muted-foreground">No styles available for this subject yet.</p>
@@ -140,12 +143,17 @@ onBeforeUnmount(() => {
             <section class="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div class="text-sm">
                     <div>Balance: <strong>{{ balance }}</strong> credits</div>
-                    <div v-if="selected" class="text-muted-foreground">This will cost {{ cost }} credits. Credits are refunded if generation fails.</div>
+                    <div v-if="selected" class="text-muted-foreground">
+                        The preview costs {{ credits(restyle_cost) }}. Building the 3D model afterwards costs {{ credits(cost) }}. Credits are refunded if a step fails.
+                    </div>
+                    <div v-if="lowForBuild && canAfford" class="mt-1 text-amber-700 dark:text-amber-300" role="status">
+                        You'll need {{ restyle_cost + cost }} credits in total to build the model. <Link href="/credits" class="underline">Add credits</Link>
+                    </div>
                 </div>
                 <div class="flex items-center gap-3">
-                    <Link v-if="selected && !canAfford" href="/credits" class="text-sm underline">Add credits</Link>
+                    <Link v-if="!canAfford" href="/credits" class="text-sm underline">Add credits</Link>
                     <Button :disabled="!canSubmit" @click="submit">
-                        {{ form.processing ? 'Uploading…' : selected ? `Generate (${cost} credits)` : 'Generate' }}
+                        {{ form.processing ? 'Uploading…' : `Preview (${credits(restyle_cost)})` }}
                     </Button>
                 </div>
             </section>
