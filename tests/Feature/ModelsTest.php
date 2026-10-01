@@ -143,3 +143,22 @@ it('describes the person chibi as a big-head vinyl toy with printable hair', fun
         ->not->toContain('hooded')
         ->not->toContain('funko');
 });
+
+it('describes the person clay as a hand-modelled fondant figure, not a vinyl toy', function () {
+    $this->seed(StyleSeeder::class);
+
+    $prompt = strtolower(Style::where('subject', 'person')->where('look', 'clay')->value('prompt'));
+
+    expect($prompt)
+        ->toContain('identity anchor')
+        ->toContain('fondant')
+        ->toContain('sugarpaste')
+        ->toContain('hand-modelled')
+        ->toContain('rope-like locks')
+        ->toContain('no thin strands')
+        ->toContain('no flyaway hairs')
+        ->toContain('3d-printable')
+        ->not->toContain('vinyl')
+        ->not->toContain('button eyes')
+        ->not->toContain('funko');
+});

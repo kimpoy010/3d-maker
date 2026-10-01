@@ -28,7 +28,25 @@ class StyleSeeder extends Seeder
         $prompts = [
             'person.realistic' => 'A lifelike 3D bust of a person with natural skin, hair and clothing, faithful to the photo, soft matte finish.',
             'person.cartoon' => 'A stylized cartoon figurine of a person with smooth rounded shapes, bold clean colours and slightly exaggerated features, glossy toy finish.',
-            'person.clay' => 'Transform the person in this photo into a cute handmade polymer clay miniature. Keep their recognizable hairstyle, hair colour, skin tone, glasses or accessories and outfit colours. Stylized proportions with a large head, simple small dot eyes and rosy cheeks. Smooth soft-matte sculpted clay with a slight satin sheen, and tiny hand-sculpted details on the clothing and accessories such as piping, buttons or small flowers. Simple standing pose with the limbs clearly separate from the body. Full body in frame on a small plain round base with no text. Plain seamless light studio background, soft even lighting, no props, portrait 3:4.',
+            'person.clay' => <<<'PROMPT'
+Reference contract: Use the uploaded image as the identity anchor for the subject. Preserve the subject's recognizable likeness, face shape, skin tone, hair colour, hairstyle and outfit from the photo. Do not beautify or alter the core identity.
+
+Transform this subject into a handmade fondant-clay figure, like a hand-modelled sugarpaste cake-topper miniature crafted from soft polymer clay.
+
+FIGURE DETAILS:
+- Proportions: a charming storybook figure with a large rounded head about one third of the total height, a small slender body, simple small black dot eyes, a tiny nose, a small gentle smile and soft rosy cheeks.
+- Material: smooth, soft, matte sugarpaste-like clay with a gentle satin sheen, rounded forms and soft colour gradients. Hand-modelled softness, no fingerprint texture, no glossy plastic.
+- Hair: the hairstyle and colour from the photo, modelled as thick, smooth, rope-like locks with broad rounded sections. No thin strands and no flyaway hairs.
+- Clothing: the outfit from the photo in its original colours, as smooth folded clay with a few tiny hand-modelled decorative details such as piping, buttons, small flowers or beads, kept small but chunky.
+- Accessories: glasses, jewellery and other accessories as chunky simplified clay forms in their original colours.
+
+SETTING & STYLE:
+- Simple standing pose, full body in frame, on a small plain round clay base with no text.
+- Clean plain seamless light studio background, soft even lighting with a gentle shadow beneath the figure.
+- Photorealistic macro photograph of a handmade clay miniature, 9:16 vertical aspect ratio.
+
+PRINTING: Design it to be 3D-printable: nothing thinner than about 2 mm at figure scale, no floating or hanging parts, feet fused to the base, arms close to the body.
+PROMPT,
             'person.chibi' => <<<'PROMPT'
 Reference contract: Use the uploaded image as the identity anchor for the subject. Preserve the subject's exact recognizable likeness, face shape, eye spacing, nose shape, skin tone, hairline, hair texture and outfit from the photo. Do not beautify or alter the core identity.
 
