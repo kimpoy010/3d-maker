@@ -13,7 +13,7 @@ class Style extends Model
     /** @use HasFactory<StyleFactory> */
     use HasFactory;
 
-    protected $fillable = ['subject', 'name', 'look', 'provider_params', 'credit_cost', 'active', 'preview_image'];
+    protected $fillable = ['subject', 'name', 'look', 'prompt', 'provider_params', 'credit_cost', 'active', 'preview_image'];
 
     protected function casts(): array
     {

@@ -46,3 +46,29 @@ it('seeds styles idempotently', function () {
 
     expect($count)->toBeGreaterThan(5)->and(Style::count())->toBe($count);
 });
+
+it('stores an optional prompt on a style', function () {
+    $with = Style::factory()->create(['prompt' => 'glossy vinyl figure']);
+    $without = Style::factory()->create(['prompt' => null]);
+
+    expect(Style::find($with->id)->prompt)->toBe('glossy vinyl figure')
+        ->and(Style::find($without->id)->prompt)->toBeNull();
+});
+
+it('seeds a non-empty prompt for every style', function () {
+    $this->seed(StyleSeeder::class);
+
+    $styles = Style::all();
+
+    expect($styles)->not->toBeEmpty()
+        ->and($styles->every(fn (Style $style) => filled($style->prompt)))->toBeTrue();
+});
+
+it('writes different prompts for different looks', function () {
+    $this->seed(StyleSeeder::class);
+
+    $person = Style::where('subject', 'person')->pluck('prompt', 'look');
+
+    expect($person['chibi'])->not->toBe($person['clay'])
+        ->and($person['chibi'])->toContain('chibi');
+});
