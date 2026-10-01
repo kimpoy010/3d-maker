@@ -100,7 +100,7 @@ onBeforeUnmount(() => {
                     </template>
                 </label>
                 <p class="text-xs text-muted-foreground">Tip: a front-facing photo with good lighting and a plain background gives the best results.</p>
-                <p class="text-xs text-muted-foreground">Your photo is sent to our AI partners (OpenAI and Meshy) to make your figure, and deleted from our servers once you approve the preview.</p>
+                <p class="text-xs text-muted-foreground">Your photo is sent to OpenAI to make the preview, and the approved preview is sent to Meshy to build the 3D model. We delete your original photo when you approve the preview, or after 7 days if you don't. The approved preview is kept with your creation until you delete it.</p>
                 <p v-if="clientError || form.errors.photo" class="text-sm text-destructive">{{ clientError ?? form.errors.photo }}</p>
             </section>
 
@@ -132,7 +132,7 @@ onBeforeUnmount(() => {
                         @click="form.style_id = style.id"
                     >
                         <span class="block font-medium">{{ style.name }}</span>
-                        <span class="mt-1 block text-xs text-muted-foreground">{{ style.credit_cost }} credits to build</span>
+                        <span class="mt-1 block text-xs text-muted-foreground">{{ credits(style.credit_cost) }} to build</span>
                     </button>
                 </div>
                 <p v-if="visibleStyles.length === 0" class="text-sm text-muted-foreground">No styles available for this subject yet.</p>
@@ -147,7 +147,7 @@ onBeforeUnmount(() => {
                         The preview costs {{ credits(restyle_cost) }}. Building the 3D model afterwards costs {{ credits(cost) }}. Credits are refunded if a step fails.
                     </div>
                     <div v-if="lowForBuild && canAfford" class="mt-1 text-amber-700 dark:text-amber-300" role="status">
-                        You'll need {{ restyle_cost + cost }} credits in total to build the model. <Link href="/credits" class="underline">Add credits</Link>
+                        You'll need {{ credits(restyle_cost + cost) }} in total to build the model. <Link href="/credits" class="underline">Add credits</Link>
                     </div>
                 </div>
                 <div class="flex items-center gap-3">

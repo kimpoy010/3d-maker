@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { usePolling } from '@/composables/usePolling';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -42,7 +42,16 @@ const liveText = computed(() => {
     return 'This preview is no longer available';
 });
 
-const polling = usePolling({ only: ['stylization'], active: () => working.value });
+const polling = usePolling({ only: ['stylization', 'balance'], active: () => working.value });
+
+// Inertia reuses this component when "Try again" redirects to a new preview: drop old errors.
+watch(
+    () => props.stylization.id,
+    () => {
+        approveForm.clearErrors();
+        retryForm.clearErrors();
+    },
+);
 
 function approve() {
     approveForm.post(`/stylizations/${props.stylization.id}/approve`, { preserveScroll: true });
