@@ -46,19 +46,25 @@ final class OpenAiStylizer implements ImageStylizer
 
         $settings = config('stylizer.openai');
 
+        $fields = [
+            'model' => $settings['model'],
+            'prompt' => $style->prompt,
+            'size' => $settings['size'],
+            'quality' => $settings['quality'],
+            'output_format' => 'png',
+        ];
+
+        // gpt-image-2 always reads the photo at high fidelity and rejects the parameter.
+        if (! str_starts_with((string) $settings['model'], 'gpt-image-2')) {
+            $fields['input_fidelity'] = $settings['input_fidelity'];
+        }
+
         try {
             $response = Http::withToken($key)
                 ->connectTimeout(10)
                 ->timeout((int) $settings['timeout_seconds'])
                 ->attach('image', $contents, 'photo.jpg', ['Content-Type' => 'image/jpeg'])
-                ->post(self::URL, [
-                    'model' => $settings['model'],
-                    'prompt' => $style->prompt,
-                    'size' => $settings['size'],
-                    'quality' => $settings['quality'],
-                    'input_fidelity' => $settings['input_fidelity'],
-                    'output_format' => 'png',
-                ]);
+                ->post(self::URL, $fields);
         } catch (ConnectionException $e) {
             throw new TransientProviderException('The image service could not be reached.', 0, $e);
         }
@@ -101,6 +107,8 @@ final class OpenAiStylizer implements ImageStylizer
         }
 
         if ($code === 'moderation_blocked' || str_contains($message, 'safety system')) {
+            Log::warning('OpenAI refused an image edit on safety grounds.', ['status' => $status, 'code' => $code]);
+
             throw new PermanentProviderException(self::REFUSED);
         }
 

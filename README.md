@@ -41,8 +41,9 @@ A customer's photo is first restyled by an image model, then the approved pictur
 | `STYLIZER_PROVIDER` | `mock` | Restyle provider: `mock` or `openai`. |
 | `STYLIZER_ENABLED` | `true` | Kill switch. `false` rejects new previews with a clear message. |
 | `OPENAI_API_KEY` | empty | OpenAI key, used when `STYLIZER_PROVIDER=openai`. |
-| `OPENAI_IMAGE_MODEL` | `gpt-image-1.5` | OpenAI image model. |
+| `OPENAI_IMAGE_MODEL` | `gpt-image-2.5-flare` | OpenAI image model. Fallback if it is ever renamed or removed: `gpt-image-2` (documented, same parameters). |
 | `OPENAI_IMAGE_QUALITY` | `medium` | Image quality passed to OpenAI. |
+| `OPENAI_INPUT_FIDELITY` | `low` | `low` lets the style prompt reshape the face (button eyes, big head); `high` keeps the photo's features closely but fights chibi/toy looks. |
 | `OPENAI_IMAGE_SIZE` | `1024x1536` | Image size passed to OpenAI. |
 | `MODEL_PROVIDER` | `mock` | 3D provider: `mock` or `meshy`. |
 | `MESHY_API_KEY` | empty | Meshy key, used when `MODEL_PROVIDER=meshy`. |

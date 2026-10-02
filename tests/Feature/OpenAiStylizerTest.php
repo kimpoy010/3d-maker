@@ -40,9 +40,22 @@ it('sends the photo and the style prompt to the image edit endpoint', function (
             && $data['prompt'] === 'Make it a tiny vinyl figure.'
             && $data['size'] === '1024x1536'
             && $data['quality'] === 'medium'
-            && $data['input_fidelity'] === 'high'
+            && $data['input_fidelity'] === 'low'
             && $data['output_format'] === 'png'
             && isset($data['image']);
+    });
+});
+
+it('leaves out input fidelity for gpt-image-2, which does not accept it', function () {
+    config(['stylizer.openai.model' => 'gpt-image-2']);
+    Http::fake(['api.openai.com/*' => ($this->ok)()]);
+
+    (new OpenAiStylizer)->stylize($this->photo, $this->style);
+
+    Http::assertSent(function (Request $request) {
+        $names = collect($request->data())->pluck('name');
+
+        return $names->contains('model') && ! $names->contains('input_fidelity');
     });
 });
 

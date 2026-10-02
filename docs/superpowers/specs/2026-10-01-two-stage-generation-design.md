@@ -73,7 +73,7 @@ interface ImageStylizer
 
 Throws the existing `TransientProviderException` or `PermanentProviderException`. Bound by `config('stylizer.provider')` (`mock` or `openai`).
 
-**`OpenAiStylizer`:** `POST https://api.openai.com/v1/images/edits` (multipart) with `model`, the photo as `image`, `prompt` = `$style->prompt` unchanged, `size`, `quality`, `input_fidelity=high`, `output_format=png`. The response carries the image as base64 in `data[0].b64_json`; no download step. Error mapping:
+**`OpenAiStylizer`:** `POST https://api.openai.com/v1/images/edits` (multipart) with `model`, the photo as `image`, `prompt` = `$style->prompt` unchanged, `size`, `quality`, `input_fidelity` (default `low`, see `OPENAI_INPUT_FIDELITY`), `output_format=png`. The response carries the image as base64 in `data[0].b64_json`; no download step. Error mapping:
 
 | Response | Mapped to |
 |---|---|

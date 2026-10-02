@@ -17,10 +17,10 @@ return [
     'daily_limit' => (int) env('STYLIZER_DAILY_LIMIT', 30),
 
     'openai' => [
-        'model' => env('OPENAI_IMAGE_MODEL', 'gpt-image-1.5'),
+        'model' => env('OPENAI_IMAGE_MODEL', 'gpt-image-2.5-flare'),
         'quality' => env('OPENAI_IMAGE_QUALITY', 'medium'),
         'size' => env('OPENAI_IMAGE_SIZE', '1024x1536'),
-        'input_fidelity' => 'high',
+        'input_fidelity' => env('OPENAI_INPUT_FIDELITY', 'low'),
         // Must stay below the RestylePhoto job timeout (150 s).
         'timeout_seconds' => 120,
     ],
