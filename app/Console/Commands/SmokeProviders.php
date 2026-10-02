@@ -8,6 +8,7 @@ use App\Services\ModelProviders\ModelProvider;
 use App\Services\ModelProviders\ProviderResult;
 use App\Services\ModelProviders\ProviderState;
 use App\Services\Stylizers\ImageStylizer;
+use App\Services\Stylizers\StylizedImage;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
@@ -60,14 +61,15 @@ class SmokeProviders extends Command
             $started = microtime(true);
             $this->info("Restyling with {$style->subject->value} {$style->look}...");
             $png = $stylizer->stylize($disk->path("{$dir}/original.jpg"), $style);
-            $disk->put("{$dir}/restyled.png", $png);
-            $this->line(sprintf('  done in %.1fs, %s KB -> %s', microtime(true) - $started, number_format(strlen($png) / 1024, 1), $disk->path("{$dir}/restyled.png")));
+            $restyled = "{$dir}/restyled.".StylizedImage::extension($png);
+            $disk->put($restyled, $png);
+            $this->line(sprintf('  done in %.1fs, %s KB -> %s', microtime(true) - $started, number_format(strlen($png) / 1024, 1), $disk->path($restyled)));
 
             if ($this->option('skip-3d')) {
                 return self::SUCCESS;
             }
 
-            $disk->put("{$dir}/restyled.jpg", $sanitizer->sanitize($disk->path("{$dir}/restyled.png")));
+            $disk->put("{$dir}/restyled.jpg", $sanitizer->sanitize($disk->path($restyled)));
 
             $this->info('Building the 3D model...');
             $taskId = $provider->start($disk->path("{$dir}/restyled.jpg"), $style);

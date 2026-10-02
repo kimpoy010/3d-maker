@@ -21,6 +21,9 @@ return [
         'quality' => env('OPENAI_IMAGE_QUALITY', 'medium'),
         'size' => env('OPENAI_IMAGE_SIZE', '1024x1536'),
         'input_fidelity' => env('OPENAI_INPUT_FIDELITY', 'low'),
+        // JPEG keeps the response around 150 KB; a 2-3 MB PNG body can crawl on slower links and time out.
+        'output_format' => env('OPENAI_OUTPUT_FORMAT', 'jpeg'),
+        'output_compression' => (int) env('OPENAI_OUTPUT_COMPRESSION', 90),
         // Must stay below the RestylePhoto job timeout (150 s).
         'timeout_seconds' => 120,
     ],

@@ -259,7 +259,7 @@ class StylizationService
         if ($failed) {
             // A crashed run may have stored a result the row never recorded; drop that orphan.
             try {
-                Storage::disk('local')->delete("stylizations/{$id}/result.png");
+                Storage::disk('local')->delete(["stylizations/{$id}/result.png", "stylizations/{$id}/result.jpg"]);
             } catch (Throwable) {
                 // best effort: the refund has already committed
             }

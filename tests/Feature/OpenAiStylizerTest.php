@@ -41,7 +41,8 @@ it('sends the photo and the style prompt to the image edit endpoint', function (
             && $data['size'] === '1024x1536'
             && $data['quality'] === 'medium'
             && $data['input_fidelity'] === 'low'
-            && $data['output_format'] === 'png'
+            && $data['output_format'] === 'jpeg'
+            && $data['output_compression'] == 90
             && isset($data['image']);
     });
 });
@@ -213,4 +214,17 @@ it('logs a rejected request as an error with only the status and code', function
 
     Log::shouldHaveReceived('error')->withArgs(fn (string $message, array $context = []) => $context === ['status' => 400, 'code' => 'invalid_value'])->once();
     Log::shouldNotHaveReceived('warning');
+});
+
+it('sends no compression setting when png is configured', function () {
+    config(['stylizer.openai.output_format' => 'png']);
+    Http::fake(['api.openai.com/*' => ($this->ok)()]);
+
+    (new OpenAiStylizer)->stylize($this->photo, $this->style);
+
+    Http::assertSent(function (Request $request) {
+        $data = collect($request->data())->mapWithKeys(fn ($part) => [$part['name'] => $part['contents']])->all();
+
+        return $data['output_format'] === 'png' && ! array_key_exists('output_compression', $data);
+    });
 });

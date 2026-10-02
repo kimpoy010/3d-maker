@@ -9,7 +9,7 @@ use App\Services\ModelProviders\TransientProviderException;
 interface ImageStylizer
 {
     /**
-     * Restyle a photo (absolute local path) using the style's prompt. Returns PNG bytes.
+     * Restyle a photo (absolute local path) using the style's prompt. Returns image bytes (JPEG or PNG).
      *
      * Exception messages are shown to the customer, so they must be plain and safe.
      *

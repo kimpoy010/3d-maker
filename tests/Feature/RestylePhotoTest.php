@@ -196,3 +196,21 @@ it('finishes a preview that is already processing, as after a transient release'
         ->and($this->credits->balance($this->user))->toBe(9);
     Storage::disk('local')->assertExists($fresh->result_image_path);
 });
+
+it('stores a jpeg result under a .jpg name so the file route serves the right type', function () {
+    app()->bind(ImageStylizer::class, fn () => new class implements ImageStylizer
+    {
+        public function stylize(string $photoPath, Style $style): string
+        {
+            return fakeJpegBytes(64, 96);
+        }
+    });
+    $stylization = ($this->makeStylization)();
+
+    ($this->runJob)($stylization);
+
+    $fresh = $stylization->fresh();
+    expect($fresh->status)->toBe(StylizationStatus::Ready)
+        ->and($fresh->result_image_path)->toBe("stylizations/{$stylization->id}/result.jpg");
+    Storage::disk('local')->assertExists($fresh->result_image_path);
+});

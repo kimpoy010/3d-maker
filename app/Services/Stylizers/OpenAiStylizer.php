@@ -51,8 +51,12 @@ final class OpenAiStylizer implements ImageStylizer
             'prompt' => $style->prompt,
             'size' => $settings['size'],
             'quality' => $settings['quality'],
-            'output_format' => 'png',
+            'output_format' => $settings['output_format'],
         ];
+
+        if (in_array($settings['output_format'], ['jpeg', 'webp'], true)) {
+            $fields['output_compression'] = $settings['output_compression'];
+        }
 
         // gpt-image-2 always reads the photo at high fidelity and rejects the parameter.
         if (! str_starts_with((string) $settings['model'], 'gpt-image-2')) {

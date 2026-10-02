@@ -8,6 +8,7 @@ use App\Services\ModelProviders\PermanentProviderException;
 use App\Services\ModelProviders\TransientProviderException;
 use App\Services\StylizationService;
 use App\Services\Stylizers\ImageStylizer;
+use App\Services\Stylizers\StylizedImage;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -66,7 +67,7 @@ class RestylePhoto implements ShouldQueue
         $disk = Storage::disk('local');
 
         try {
-            $png = $stylizer->stylize($disk->path($stylization->source_image_path), $stylization->style);
+            $image = $stylizer->stylize($disk->path($stylization->source_image_path), $stylization->style);
         } catch (TransientProviderException) {
             $this->release(self::TRANSIENT_RETRY_SECONDS);
 
@@ -77,8 +78,9 @@ class RestylePhoto implements ShouldQueue
             return;
         }
 
-        $resultPath = "stylizations/{$stylization->id}/result.png";
-        $disk->put($resultPath, $png);
+        // Named by the real format: the file route serves it with nosniff.
+        $resultPath = "stylizations/{$stylization->id}/result.".StylizedImage::extension($image);
+        $disk->put($resultPath, $image);
 
         // Lost the race. The path is per-stylization, so only drop the file if the row ended
         // up failed or discarded; if another run made it ready, the file is that run's own.
