@@ -70,7 +70,7 @@ it('writes different prompts for different looks', function () {
     $person = Style::where('subject', 'person')->pluck('prompt', 'look');
 
     expect($person['chibi'])->not->toBe($person['clay'])
-        ->and(strtolower($person['chibi']))->toContain('chibi');
+        ->and(strtolower($person['chibi']))->toContain('pop vinyl');
 });
 
 it('offers a sleepy look for people and pets', function () {
@@ -79,7 +79,6 @@ it('offers a sleepy look for people and pets', function () {
     $sleepy = Style::where('look', 'sleepy')->orderBy('subject')->get();
 
     expect($sleepy->pluck('subject')->map->value->all())->toBe(['person', 'pet'])
-        ->and($sleepy->every(fn (Style $style) => str_contains($style->prompt, 'sleepy')))->toBeTrue()
         ->and($sleepy->every(fn (Style $style) => $style->credit_cost === 5))->toBeTrue();
 });
 
@@ -110,8 +109,7 @@ it('keeps the person sleepy prompt generic and printable', function () {
     $prompt = strtolower(Style::where('subject', 'person')->where('look', 'sleepy')->value('prompt'));
 
     expect($prompt)
-        ->toContain('1:6 scale')
-        ->toContain('matte')
+        ->toContain('1:6 designer vinyl figure')
         ->toContain('no individual strands')
         ->toContain('no flyaway hairs')
         ->toContain('3d-printable')
@@ -123,21 +121,24 @@ it('keeps the person sleepy prompt generic and printable', function () {
         ->not->toContain('11 inches');
 });
 
-it('describes the person chibi as a big-head vinyl toy with printable hair', function () {
+it('describes the person chibi as a big-head pop vinyl toy with printable hair', function () {
     $this->seed(StyleSeeder::class);
 
     $prompt = strtolower(Style::where('subject', 'person')->where('look', 'chibi')->value('prompt'));
 
     expect($prompt)
-        ->toContain('identity anchor')
-        ->toContain('do not beautify')
-        ->toContain('no visible neck')
-        ->toContain('directly on top of the tiny shoulders')
+        ->toContain('big-head pop vinyl')
         ->toContain('oversized square-shaped head')
-        ->toContain('solid black glossy button eyes')
-        ->toContain('low plain round base')
+        ->toContain('about half of the total figure height')
+        ->toContain('no visible neck')
+        ->toContain('very short torso')
+        ->toContain('solid black glossy round eyes')
+        ->toContain('only about half as wide as the head')
+        ->toContain('baggy, dark charcoal wide-leg trousers')
+        ->toContain('plain dark round base')
         ->toContain('no individual strands')
         ->toContain('no flyaway hairs')
+        ->toContain('no box, no packaging, no props')
         ->toContain('3d-printable')
         ->not->toContain('auburn')
         ->not->toContain('hooded')
@@ -186,7 +187,7 @@ it('gives every style a complete, printable, photo-anchored prompt', function ()
         ->and(stylesFailing(fn (string $p) => str_contains($p, '3d-printable')))->toBe([])
         ->and(stylesFailing(fn (string $p) => str_contains($p, 'plain seamless')))->toBe([])
         ->and(stylesFailing(fn (string $p) => str_contains($p, 'no text')))->toBe([])
-        ->and(stylesFailing(fn (string $p) => str_contains($p, 'identity anchor') || str_contains($p, 'provided photo')))->toBe([])
+        ->and(stylesFailing(fn (string $p) => str_contains($p, 'identity anchor') || str_contains($p, 'provided photo') || str_contains($p, 'attached image')))->toBe([])
         ->and(Style::pluck('prompt')->unique())->toHaveCount(11);
 });
 
@@ -202,4 +203,24 @@ it('keeps pets and objects sturdy and printable', function () {
     expect(stylesFailing(fn (string $p) => str_contains($p, 'tail'), ['pet']))->toBe([])
         ->and(stylesFailing(fn (string $p) => str_contains($p, 'at least 2 mm'), ['object']))->toBe([])
         ->and(stylesFailing(fn (string $p) => str_contains($p, 'readable text'), ['object']))->toBe([]);
+});
+
+it('keeps the person sleepy figure on a plain background with no packaging or lettering', function () {
+    $this->seed(StyleSeeder::class);
+
+    $prompt = strtolower(Style::where('subject', 'person')->where('look', 'sleepy')->value('prompt'));
+
+    expect($prompt)
+        ->toContain('plain seamless off-white studio background')
+        ->toContain('no box, no packaging, no props')
+        ->toContain('no text, logos or lettering anywhere')
+        ->toContain('full body in frame on a small plain round base');
+});
+
+it('asks the person sleepy figure for squat chibi proportions', function () {
+    $this->seed(StyleSeeder::class);
+
+    $prompt = strtolower(Style::where('subject', 'person')->where('look', 'sleepy')->value('prompt'));
+
+    expect($prompt)->toContain('oversized head about 40 to 45 percent')->toContain('short legs');
 });
