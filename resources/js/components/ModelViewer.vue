@@ -4,13 +4,16 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
-const props = withDefaults(defineProps<{ src: string; autoRotate?: boolean }>(), { autoRotate: true });
+const props = withDefaults(defineProps<{ src: string; autoRotate?: boolean; defaultLook?: 'textured' | 'clay' }>(), {
+    autoRotate: true,
+    defaultLook: 'clay',
+});
 
 const container = ref<HTMLDivElement | null>(null);
 const state = ref<'loading' | 'ready' | 'error'>('loading');
 const rotating = ref(props.autoRotate);
 const preset = ref<'studio' | 'soft'>('soft');
-const look = ref<'textured' | 'clay'>('clay');
+const look = ref<'textured' | 'clay'>(props.defaultLook);
 
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;

@@ -47,7 +47,7 @@ const steps = [
                     </div>
                     <p class="text-sm text-muted-foreground">New accounts start with a free ₱100 balance.</p>
                 </div>
-                <ModelViewer :src="sampleUrl" />
+                <ModelViewer :src="sampleUrl" default-look="textured" />
             </section>
 
             <section class="mx-auto max-w-6xl px-4 py-12">
