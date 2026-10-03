@@ -5,7 +5,7 @@ import ModelViewer from '@/components/ModelViewer.vue';
 import { Button } from '@/components/ui/button';
 import type { SharedData } from '@/types';
 
-withDefaults(defineProps<{ canRegister?: boolean }>(), { canRegister: true });
+withDefaults(defineProps<{ canRegister?: boolean; sampleUrl?: string }>(), { canRegister: true, sampleUrl: '/samples/demo.glb' });
 
 const page = usePage<SharedData>();
 const user = computed(() => page.props.auth.user);
@@ -47,7 +47,7 @@ const steps = [
                     </div>
                     <p class="text-sm text-muted-foreground">New accounts start with a free ₱100 balance.</p>
                 </div>
-                <ModelViewer src="/samples/demo.glb" />
+                <ModelViewer :src="sampleUrl" />
             </section>
 
             <section class="mx-auto max-w-6xl px-4 py-12">

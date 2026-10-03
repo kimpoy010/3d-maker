@@ -190,3 +190,11 @@ describe('paid downloads', function () {
         expect($this->credits->balance($this->owner))->toBe(60)->and($this->credits->balance($this->other))->toBe(60);
     });
 });
+
+it('gives the home page a versioned sample url so a cached older sample is replaced', function () {
+    $version = filemtime(resource_path('samples/demo.glb'));
+
+    $this->get('/')->assertInertia(fn (Assert $page) => $page
+        ->component('Welcome')
+        ->where('sampleUrl', "/samples/demo.glb?v={$version}"));
+});

@@ -10,7 +10,12 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::get('/', function () {
-    return Inertia::render('Welcome');
+    // The version changes with the file, so browsers that cached an older sample fetch the new one.
+    $sample = resource_path('samples/demo.glb');
+
+    return Inertia::render('Welcome', [
+        'sampleUrl' => '/samples/demo.glb?v='.(is_file($sample) ? filemtime($sample) : 0),
+    ]);
 })->name('home');
 
 Route::get('samples/demo.glb', SampleController::class)->name('samples.demo');
