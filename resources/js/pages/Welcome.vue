@@ -12,7 +12,7 @@ const user = computed(() => page.props.auth.user);
 
 const steps = [
     { title: 'Upload', body: 'Add a clear photo of a person, pet, or favourite object.' },
-    { title: 'Pick a style', body: 'Chibi, clay, sleepy, realistic or cartoon: choose the look you like.' },
+    { title: 'Pick a style', body: 'Bobble head, fondant, pop-art, realistic or cartoon: choose the look you like.' },
     { title: 'Preview and approve', body: 'See your figure as a picture first. Happy with it? Approve it, or try again.' },
     { title: 'Get your 3D model', body: 'Spin it around in your browser and download it, ready for printing.' },
 ];

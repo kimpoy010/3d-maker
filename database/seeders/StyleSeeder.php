@@ -13,9 +13,9 @@ class StyleSeeder extends Seeder
         $looks = [
             'realistic' => ['Realistic', 50, ['texture' => true, 'target_faces' => 100000]],
             'cartoon' => ['Cartoon', 50, ['texture' => true, 'target_faces' => 100000]],
-            'clay' => ['Clay', 50, ['texture' => false, 'target_faces' => 100000]],
-            'chibi' => ['Chibi', 50, ['texture' => true, 'target_faces' => 100000]],
-            'sleepy' => ['Sleepy', 50, ['texture' => true, 'target_faces' => 100000]],
+            'clay' => ['Fondant', 50, ['texture' => false, 'target_faces' => 100000]],
+            'chibi' => ['Bobble Head', 50, ['texture' => true, 'target_faces' => 100000]],
+            'sleepy' => ['Pop-art', 50, ['texture' => true, 'target_faces' => 100000]],
         ];
 
         $matrix = [
