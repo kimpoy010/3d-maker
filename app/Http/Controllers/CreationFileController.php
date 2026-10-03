@@ -24,6 +24,10 @@ class CreationFileController extends Controller
         $disk = Storage::disk('local');
         abort_if(! $path || ! $disk->exists($path), 404);
 
+        // Viewing the model is free; the GLB and STL files are the paid download.
+        $isDownload = $type === 'print' || ($type === 'model' && $request->boolean('download'));
+        abort_if($isDownload && ! $creation->downloads_unlocked_at, 403, 'Unlock the downloads for this model first.');
+
         // creation-29-20261003-172648.glb: the id plus when the model was made (app timezone).
         $name = "creation-{$creation->id}-{$creation->created_at->format('Ymd-His')}";
 

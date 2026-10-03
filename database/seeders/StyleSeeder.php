@@ -11,11 +11,11 @@ class StyleSeeder extends Seeder
     public function run(): void
     {
         $looks = [
-            'realistic' => ['Realistic', 6, ['texture' => true, 'target_faces' => 100000]],
-            'cartoon' => ['Cartoon', 5, ['texture' => true, 'target_faces' => 100000]],
-            'clay' => ['Clay', 5, ['texture' => false, 'target_faces' => 100000]],
-            'chibi' => ['Chibi', 5, ['texture' => true, 'target_faces' => 100000]],
-            'sleepy' => ['Sleepy', 5, ['texture' => true, 'target_faces' => 100000]],
+            'realistic' => ['Realistic', 50, ['texture' => true, 'target_faces' => 100000]],
+            'cartoon' => ['Cartoon', 50, ['texture' => true, 'target_faces' => 100000]],
+            'clay' => ['Clay', 50, ['texture' => false, 'target_faces' => 100000]],
+            'chibi' => ['Chibi', 50, ['texture' => true, 'target_faces' => 100000]],
+            'sleepy' => ['Sleepy', 50, ['texture' => true, 'target_faces' => 100000]],
         ];
 
         $matrix = [

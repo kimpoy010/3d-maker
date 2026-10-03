@@ -14,8 +14,8 @@ beforeEach(function () {
     $this->stylization = Stylization::factory()->create(['user_id' => $this->user->id]);
 });
 
-it('exposes the restyle fee in config', function () {
-    expect(config('credits.restyle_cost'))->toBe(1);
+it('exposes the prices in config', function () {
+    expect(config('credits.restyle_cost'))->toBe(25)->and(config('credits.download_cost'))->toBe(100);
 });
 
 it('charges a stylization and links the ledger row to it', function () {

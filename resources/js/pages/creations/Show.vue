@@ -4,6 +4,7 @@ import { computed, ref } from 'vue';
 import ModelViewer from '@/components/ModelViewer.vue';
 import { Button } from '@/components/ui/button';
 import { usePolling } from '@/composables/usePolling';
+import { peso } from '@/lib/money';
 import AppLayout from '@/layouts/AppLayout.vue';
 import type { BreadcrumbItem } from '@/types';
 
@@ -13,20 +14,23 @@ type Creation = {
     error: string | null;
     progress: number | null;
     cost_credits: number;
+    downloads_unlocked: boolean;
+    download_cost: number;
     created_at: string;
     style: { name: string; subject: string; look: string };
     urls: { source: string; model: string | null; thumbnail: string | null; download: string | null; download_stl: string | null };
 };
 
-const props = defineProps<{ creation: Creation }>();
+const props = defineProps<{ creation: Creation; balance: number }>();
 
 const retryForm = useForm({});
+const unlockForm = useForm({});
 const deleting = ref(false);
 
 const working = computed(() => props.creation.status === 'queued' || props.creation.status === 'processing');
 const failed = computed(() => props.creation.status === 'failed');
-const busy = computed(() => retryForm.processing || deleting.value);
-const credits = (n: number) => `${n} credit${n === 1 ? '' : 's'}`;
+const busy = computed(() => retryForm.processing || unlockForm.processing || deleting.value);
+const canUnlock = computed(() => props.balance >= props.creation.download_cost);
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
     { title: 'My Creations', href: '/creations' },
     { title: `${props.creation.style.name} ${props.creation.style.subject}`, href: `/creations/${props.creation.id}` },
@@ -40,6 +44,10 @@ const liveText = computed(() => {
 });
 
 const polling = usePolling({ only: ['creation'], active: () => working.value });
+
+function unlock() {
+    unlockForm.post(`/creations/${props.creation.id}/unlock`, { preserveScroll: true });
+}
 
 function retry() {
     retryForm.post(`/creations/${props.creation.id}/retry`);
@@ -91,7 +99,7 @@ function remove() {
                     </div>
                     <p class="text-sm text-muted-foreground">This can take a few minutes. You can leave this page; it will keep going and appear in My Creations.</p>
                     <p v-if="polling.slow.value" class="text-sm text-amber-700 dark:text-amber-300" role="status">
-                        This is taking longer than expected. If it doesn't finish soon your credits are refunded automatically.
+                        This is taking longer than expected. If it doesn't finish soon you are refunded automatically.
                         <button type="button" class="underline" @click="polling.retry()">Check again</button>
                     </p>
                     <p v-if="polling.failed.value" class="text-sm text-destructive" role="alert">
@@ -104,7 +112,21 @@ function remove() {
             <!-- succeeded -->
             <section v-else-if="creation.status === 'succeeded' && creation.urls.model" class="space-y-4">
                 <ModelViewer :src="creation.urls.model" />
-                <div class="flex flex-wrap gap-3">
+                <div v-if="!creation.downloads_unlocked" class="space-y-3 rounded-xl border p-4">
+                    <p class="text-sm">
+                        Download the GLB model and the STL print file for <strong>{{ peso(creation.download_cost) }}</strong>. You pay once for this model and can download both files as often as you like.
+                    </p>
+                    <p v-if="unlockForm.errors.unlock" class="text-sm text-destructive" role="alert">{{ unlockForm.errors.unlock }}</p>
+                    <p class="text-xs text-muted-foreground">Your balance: {{ peso(balance) }}</p>
+                    <div class="flex flex-wrap gap-3">
+                        <Button v-if="canUnlock" :disabled="busy" @click="unlock">
+                            {{ unlockForm.processing ? 'Unlocking…' : `Unlock downloads (${peso(creation.download_cost)})` }}
+                        </Button>
+                        <Button v-else as-child><Link href="/credits">Add balance to download</Link></Button>
+                        <Button variant="outline" :disabled="busy" @click="remove">Delete</Button>
+                    </div>
+                </div>
+                <div v-else class="flex flex-wrap gap-3">
                     <Button v-if="creation.urls.download" as-child><a :href="creation.urls.download">Download GLB</a></Button>
                     <Button v-if="creation.urls.download_stl" variant="outline" as-child><a :href="creation.urls.download_stl">Download STL</a></Button>
                     <Button variant="outline" :disabled="busy" @click="remove">Delete</Button>
@@ -115,10 +137,10 @@ function remove() {
             <section v-else-if="failed" class="space-y-4 rounded-xl border border-destructive/40 p-5">
                 <p class="font-medium text-destructive">We couldn't build this model.</p>
                 <p v-if="creation.error" class="text-sm text-muted-foreground">{{ creation.error }}</p>
-                <p class="text-sm">Your {{ credits(creation.cost_credits) }} {{ creation.cost_credits === 1 ? 'has' : 'have' }} been refunded. You can try the same image again, or start over.</p>
+                <p class="text-sm">Your {{ peso(creation.cost_credits) }} has been refunded. You can try the same image again, or start over.</p>
                 <p v-if="retryForm.errors.retry" class="text-sm text-destructive" role="alert">{{ retryForm.errors.retry }}</p>
                 <div class="flex flex-wrap gap-3">
-                    <Button :disabled="busy" @click="retry">Try again ({{ credits(creation.cost_credits) }})</Button>
+                    <Button :disabled="busy" @click="retry">Try again ({{ peso(creation.cost_credits) }})</Button>
                     <Button variant="outline" as-child><Link href="/create">Start over</Link></Button>
                     <Button variant="outline" :disabled="busy" @click="remove">Delete</Button>
                 </div>

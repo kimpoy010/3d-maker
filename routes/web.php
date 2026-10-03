@@ -22,6 +22,7 @@ Route::middleware('auth')->group(function () {
     Route::get('creations', [CreationController::class, 'index'])->name('creations.index');
     Route::get('creations/{creation}', [CreationController::class, 'show'])->name('creations.show');
     Route::delete('creations/{creation}', [CreationController::class, 'destroy'])->name('creations.destroy');
+    Route::post('creations/{creation}/unlock', [CreationController::class, 'unlock'])->middleware('throttle:generate')->name('creations.unlock');
     Route::post('creations/{creation}/retry', [CreationController::class, 'retry'])->middleware('throttle:generate')->name('creations.retry');
     Route::get('creations/{creation}/files/{type}', CreationFileController::class)
         ->whereIn('type', ['source', 'model', 'print', 'thumbnail'])

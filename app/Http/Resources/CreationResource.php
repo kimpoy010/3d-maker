@@ -24,6 +24,8 @@ class CreationResource extends JsonResource
             'error' => $this->error,
             'progress' => $this->progress,
             'cost_credits' => $this->cost_credits,
+            'downloads_unlocked' => (bool) $this->downloads_unlocked_at,
+            'download_cost' => (int) config('credits.download_cost'),
             'created_at' => $this->created_at->toIso8601String(),
             'style' => [
                 'name' => $this->style->name,
@@ -34,8 +36,9 @@ class CreationResource extends JsonResource
                 'source' => $file('source'),
                 'model' => $this->model_path ? $file('model') : null,
                 'thumbnail' => $this->thumbnail_path ? $file('thumbnail') : null,
-                'download' => $this->model_path ? $file('model', ['download' => 1]) : null,
-                'download_stl' => $this->print_model_path ? $file('print') : null,
+                // The links only appear once the downloads are paid for (the file route enforces it too).
+                'download' => $this->model_path && $this->downloads_unlocked_at ? $file('model', ['download' => 1]) : null,
+                'download_stl' => $this->print_model_path && $this->downloads_unlocked_at ? $file('print') : null,
             ],
         ];
     }

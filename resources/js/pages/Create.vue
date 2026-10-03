@@ -2,13 +2,14 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { Button } from '@/components/ui/button';
+import { peso } from '@/lib/money';
 import AppLayout from '@/layouts/AppLayout.vue';
 import type { BreadcrumbItem } from '@/types';
 
 type Subject = 'person' | 'pet' | 'object';
 type StyleOption = { id: number; subject: Subject; name: string; look: string; credit_cost: number };
 
-const props = defineProps<{ styles: StyleOption[]; balance: number; restyle_cost: number }>();
+const props = defineProps<{ styles: StyleOption[]; balance: number; restyle_cost: number; download_cost: number }>();
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Create', href: '/create' }];
 const subjects: { value: Subject; label: string }[] = [
@@ -30,7 +31,6 @@ const selected = computed(() => props.styles.find((s) => s.id === form.style_id)
 const cost = computed(() => selected.value?.credit_cost ?? 0);
 const canAfford = computed(() => props.balance >= props.restyle_cost);
 const lowForBuild = computed(() => !!selected.value && props.balance < props.restyle_cost + cost.value);
-const credits = (n: number) => `${n} credit${n === 1 ? '' : 's'}`;
 const canSubmit = computed(() => !!form.photo && !!selected.value && canAfford.value && !form.processing);
 
 function setPhoto(file: File | undefined) {
@@ -132,7 +132,7 @@ onBeforeUnmount(() => {
                         @click="form.style_id = style.id"
                     >
                         <span class="block font-medium">{{ style.name }}</span>
-                        <span class="mt-1 block text-xs text-muted-foreground">{{ credits(style.credit_cost) }} to build</span>
+                        <span class="mt-1 block text-xs text-muted-foreground">{{ peso(style.credit_cost) }} to build</span>
                     </button>
                 </div>
                 <p v-if="visibleStyles.length === 0" class="text-sm text-muted-foreground">No styles available for this subject yet.</p>
@@ -142,18 +142,18 @@ onBeforeUnmount(() => {
             <!-- 3. Review -->
             <section class="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div class="text-sm">
-                    <div>Balance: <strong>{{ credits(balance) }}</strong></div>
+                    <div>Balance: <strong>{{ peso(balance) }}</strong></div>
                     <div v-if="selected" class="text-muted-foreground">
-                        The preview costs {{ credits(restyle_cost) }}. Building the 3D model afterwards costs {{ credits(cost) }}. Credits are refunded if a step fails.
+                        The preview costs {{ peso(restyle_cost) }}. Building the 3D model afterwards costs {{ peso(cost) }}, and downloading its GLB and STL files costs {{ peso(download_cost) }} (once per model). If a step fails you are refunded.
                     </div>
                     <div v-if="lowForBuild && canAfford" class="mt-1 text-amber-700 dark:text-amber-300" role="status">
-                        You'll need {{ credits(restyle_cost + cost) }} in total to build the model. <Link href="/credits" class="underline">Add credits</Link>
+                        You'll need {{ peso(restyle_cost + cost) }} in total to build the model. <Link href="/credits" class="underline">Add balance</Link>
                     </div>
                 </div>
                 <div class="flex items-center gap-3">
-                    <Link v-if="!canAfford" href="/credits" class="text-sm underline">Add credits</Link>
+                    <Link v-if="!canAfford" href="/credits" class="text-sm underline">Add balance</Link>
                     <Button :disabled="!canSubmit" @click="submit">
-                        {{ form.processing ? 'Uploading…' : `Preview (${credits(restyle_cost)})` }}
+                        {{ form.processing ? 'Uploading…' : `Preview (${peso(restyle_cost)})` }}
                     </Button>
                 </div>
             </section>

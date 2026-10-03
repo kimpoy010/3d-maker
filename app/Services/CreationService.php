@@ -46,6 +46,33 @@ class CreationService
         });
     }
 
+    /**
+     * Pay once to download the GLB and STL of a finished creation. Idempotent: unlocking again
+     * charges nothing. The creation row is locked first, then the user row (inside the charge).
+     *
+     * @throws StylizationNotReadyException when the creation has no finished model
+     * @throws InsufficientCreditsException
+     */
+    public function unlockDownloads(User $user, Creation $creation): Creation
+    {
+        return DB::transaction(function () use ($user, $creation) {
+            $locked = Creation::whereKey($creation->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->downloads_unlocked_at) {
+                return $locked;
+            }
+
+            if ($locked->status !== CreationStatus::Succeeded || ! $locked->model_path) {
+                throw new StylizationNotReadyException('Only a finished model can be unlocked.');
+            }
+
+            $this->credits->spendForDownload($user, (int) config('credits.download_cost'), $locked);
+            $locked->update(['downloads_unlocked_at' => now()]);
+
+            return $locked;
+        });
+    }
+
     public function dispatchGeneration(Creation $creation): void
     {
         GenerateCreation::dispatch($creation->id);

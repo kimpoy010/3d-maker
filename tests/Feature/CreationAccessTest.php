@@ -1,8 +1,11 @@
 <?php
 
 use App\Enums\CreationStatus;
+use App\Enums\LedgerReason;
 use App\Models\Creation;
+use App\Models\CreditLedgerEntry;
 use App\Models\User;
+use App\Services\Credits\CreditService;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -20,6 +23,7 @@ beforeEach(function () {
         'source_image_path' => 'uploads/a.jpg',
         'model_path' => 'creations/1/model.glb',
         'thumbnail_path' => null,
+        'downloads_unlocked_at' => now(),
     ]);
 });
 
@@ -122,4 +126,67 @@ it('offers the STL download only when one was built, and only to the owner', fun
         ->assertHeader('content-disposition', 'attachment; filename=creation-'.$id.'-'.$this->creation->created_at->format('Ymd-His').'.stl')
         ->assertHeader('X-Content-Type-Options', 'nosniff');
     $this->actingAs($this->other)->get("/creations/{$id}/files/print")->assertForbidden();
+});
+
+describe('paid downloads', function () {
+    beforeEach(function () {
+        $this->creation->update(['downloads_unlocked_at' => null]);
+        Storage::disk('local')->put('creations/1/print.stl', 'solid test');
+        $this->creation->update(['print_model_path' => 'creations/1/print.stl']);
+        config(['credits.download_cost' => 25]);
+        $this->credits = app(CreditService::class);
+    });
+
+    it('hides the download links and refuses the files until the downloads are unlocked', function () {
+        $id = $this->creation->id;
+
+        $this->actingAs($this->owner)->get("/creations/{$id}")->assertInertia(fn (Assert $page) => $page
+            ->where('creation.downloads_unlocked', false)
+            ->where('creation.download_cost', 25)
+            ->where('creation.urls.download', null)
+            ->where('creation.urls.download_stl', null)
+            ->where('creation.urls.model', "/creations/{$id}/files/model"));
+
+        $this->actingAs($this->owner)->get("/creations/{$id}/files/model")->assertOk(); // viewing stays free
+        $this->actingAs($this->owner)->get("/creations/{$id}/files/model?download=1")->assertForbidden();
+        $this->actingAs($this->owner)->get("/creations/{$id}/files/print")->assertForbidden();
+    });
+
+    it('charges once to unlock and then serves both files', function () {
+        $this->credits->grant($this->owner, 60, LedgerReason::Topup);
+        $id = $this->creation->id;
+
+        $this->actingAs($this->owner)->post("/creations/{$id}/unlock")->assertRedirect();
+        $this->actingAs($this->owner)->post("/creations/{$id}/unlock")->assertRedirect(); // double click
+
+        expect($this->credits->balance($this->owner))->toBe(35)
+            ->and($this->creation->fresh()->downloads_unlocked_at)->not->toBeNull()
+            ->and(CreditLedgerEntry::where('reason', LedgerReason::Download)->count())->toBe(1);
+        $this->actingAs($this->owner)->get("/creations/{$id}/files/model?download=1")->assertOk();
+        $this->actingAs($this->owner)->get("/creations/{$id}/files/print")->assertOk();
+    });
+
+    it('explains an unaffordable unlock and changes nothing', function () {
+        $this->credits->grant($this->owner, 10, LedgerReason::Topup);
+        $id = $this->creation->id;
+
+        $this->actingAs($this->owner)->post("/creations/{$id}/unlock")
+            ->assertSessionHasErrors(['unlock' => 'Not enough balance: unlocking downloads costs ₱25 and you have ₱10.']);
+
+        expect($this->credits->balance($this->owner))->toBe(10)
+            ->and($this->creation->fresh()->downloads_unlocked_at)->toBeNull();
+    });
+
+    it('only lets the owner unlock, and only a finished model', function () {
+        $this->credits->grant($this->owner, 60, LedgerReason::Topup);
+        $this->credits->grant($this->other, 60, LedgerReason::Topup);
+        $id = $this->creation->id;
+
+        $this->actingAs($this->other)->post("/creations/{$id}/unlock")->assertForbidden();
+
+        $this->creation->update(['status' => CreationStatus::Processing, 'model_path' => null]);
+        $this->actingAs($this->owner)->post("/creations/{$id}/unlock")->assertSessionHasErrors('unlock');
+
+        expect($this->credits->balance($this->owner))->toBe(60)->and($this->credits->balance($this->other))->toBe(60);
+    });
 });

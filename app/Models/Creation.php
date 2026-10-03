@@ -15,12 +15,12 @@ class Creation extends Model
 
     protected $fillable = [
         'user_id', 'style_id', 'source_image_path', 'status', 'provider_job_id',
-        'model_path', 'print_model_path', 'thumbnail_path', 'error', 'cost_credits', 'progress',
+        'model_path', 'print_model_path', 'downloads_unlocked_at', 'thumbnail_path', 'error', 'cost_credits', 'progress',
     ];
 
     protected function casts(): array
     {
-        return ['status' => CreationStatus::class];
+        return ['status' => CreationStatus::class, 'downloads_unlocked_at' => 'datetime'];
     }
 
     public function user(): BelongsTo

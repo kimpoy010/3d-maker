@@ -3,6 +3,7 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { computed, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { usePolling } from '@/composables/usePolling';
+import { peso } from '@/lib/money';
 import AppLayout from '@/layouts/AppLayout.vue';
 import type { BreadcrumbItem } from '@/types';
 
@@ -28,7 +29,6 @@ const failed = computed(() => props.stylization.status === 'failed');
 const buildCost = computed(() => props.stylization.style.credit_cost);
 const canBuild = computed(() => props.balance >= buildCost.value);
 const canRetry = computed(() => props.balance >= props.restyle_cost);
-const credits = (n: number) => `${n} credit${n === 1 ? '' : 's'}`;
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
     { title: 'Create', href: '/create' },
@@ -88,7 +88,7 @@ function discard() {
                     </div>
                     <p class="text-sm text-muted-foreground">Usually under a minute. You can leave this page; the preview will wait for you under My Creations.</p>
                     <p v-if="polling.slow.value" class="text-sm text-amber-700 dark:text-amber-300" role="status">
-                        This is taking longer than expected. If it doesn't finish soon your credit is refunded automatically.
+                        This is taking longer than expected. If it doesn't finish soon you are refunded automatically.
                         <button type="button" class="underline" @click="polling.retry()">Check again</button>
                     </p>
                     <p v-if="polling.failed.value" class="text-sm text-destructive" role="alert">
@@ -113,21 +113,21 @@ function discard() {
 
                 <div class="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between">
                     <p class="text-sm">
-                        Balance: <strong>{{ credits(balance) }}</strong>.
-                        <span class="text-muted-foreground">Building the 3D model costs {{ credits(buildCost) }}. It's refunded if the build fails.</span>
+                        Balance: <strong>{{ peso(balance) }}</strong>.
+                        <span class="text-muted-foreground">Building the 3D model costs {{ peso(buildCost) }}. It's refunded if the build fails.</span>
                     </p>
                     <div class="flex flex-wrap items-center gap-2">
                         <Button v-if="canBuild" :disabled="approveForm.processing || retryForm.processing" @click="approve">
-                            {{ approveForm.processing ? 'Starting…' : `Build 3D model (${credits(buildCost)})` }}
+                            {{ approveForm.processing ? 'Starting…' : `Build 3D model (${peso(buildCost)})` }}
                         </Button>
-                        <Button v-else as-child><Link href="/credits">Add credits to build</Link></Button>
+                        <Button v-else as-child><Link href="/credits">Add balance to build</Link></Button>
                         <Button variant="outline" :disabled="!canRetry || retryForm.processing || approveForm.processing" @click="retry">
-                            Try again ({{ credits(restyle_cost) }})
+                            Try again ({{ peso(restyle_cost) }})
                         </Button>
                     </div>
                 </div>
 
-                <p v-if="!canRetry" class="text-sm text-muted-foreground">Not enough credits for another preview. <Link href="/credits" class="underline">Add credits</Link></p>
+                <p v-if="!canRetry" class="text-sm text-muted-foreground">Not enough balance for another preview. <Link href="/credits" class="underline">Add balance</Link></p>
                 <p v-if="approveForm.errors.approve" class="text-sm text-destructive" role="alert">{{ approveForm.errors.approve }}</p>
                 <p v-if="retryForm.errors.retry" class="text-sm text-destructive" role="alert">{{ retryForm.errors.retry }}</p>
 
@@ -141,12 +141,12 @@ function discard() {
             <section v-else-if="failed" class="space-y-4 rounded-xl border border-destructive/40 p-5" role="alert">
                 <p class="font-medium text-destructive">We couldn't make a preview.</p>
                 <p v-if="stylization.error" class="text-sm text-muted-foreground">{{ stylization.error }}</p>
-                <p class="text-sm">Your {{ credits(stylization.cost_credits) }} {{ stylization.cost_credits === 1 ? 'has' : 'have' }} been refunded.</p>
+                <p class="text-sm">Your {{ peso(stylization.cost_credits) }} has been refunded.</p>
                 <div class="flex gap-3">
                     <Button as-child><Link href="/create">Try another photo</Link></Button>
-                    <Button variant="outline" :disabled="!canRetry || retryForm.processing" @click="retry">Try again ({{ credits(restyle_cost) }})</Button>
+                    <Button variant="outline" :disabled="!canRetry || retryForm.processing" @click="retry">Try again ({{ peso(restyle_cost) }})</Button>
                 </div>
-                <p v-if="!canRetry" class="text-sm text-muted-foreground">Not enough credits for another preview. <Link href="/credits" class="underline">Add credits</Link></p>
+                <p v-if="!canRetry" class="text-sm text-muted-foreground">Not enough balance for another preview. <Link href="/credits" class="underline">Add balance</Link></p>
                 <p v-if="retryForm.errors.retry" class="text-sm text-destructive">{{ retryForm.errors.retry }}</p>
             </section>
 

@@ -12,6 +12,7 @@ use App\Models\Style;
 use App\Models\Stylization;
 use App\Services\CreationService;
 use App\Services\Credits\CreditService;
+use App\Support\Money;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -35,6 +36,7 @@ class CreationController extends Controller
                 ])->values(),
             'balance' => $credits->balance($request->user()),
             'restyle_cost' => (int) config('credits.restyle_cost'),
+            'download_cost' => (int) config('credits.download_cost'),
         ]);
     }
 
@@ -66,7 +68,7 @@ class CreationController extends Controller
             $new = $creations->retryFailed($request->user(), $creation);
         } catch (InsufficientCreditsException $e) {
             throw ValidationException::withMessages([
-                'retry' => "Not enough credits: building the 3D model costs {$e->required} and you have {$e->balance}.",
+                'retry' => 'Not enough balance: building the 3D model costs '.Money::peso($e->required).' and you have '.Money::peso($e->balance).'.',
             ]);
         } catch (StylizationNotReadyException) {
             throw ValidationException::withMessages(['retry' => 'This creation cannot be retried.']);
@@ -75,13 +77,31 @@ class CreationController extends Controller
         return redirect()->route('creations.show', $new);
     }
 
-    public function show(Creation $creation): Response
+    public function show(Request $request, Creation $creation, CreditService $credits): Response
     {
         Gate::authorize('view', $creation);
 
         return Inertia::render('creations/Show', [
             'creation' => CreationResource::make($creation->load('style'))->resolve(),
+            'balance' => $credits->balance($request->user()),
         ]);
+    }
+
+    public function unlock(Request $request, Creation $creation, CreationService $creations): RedirectResponse
+    {
+        Gate::authorize('view', $creation);
+
+        try {
+            $creations->unlockDownloads($request->user(), $creation);
+        } catch (InsufficientCreditsException $e) {
+            throw ValidationException::withMessages([
+                'unlock' => 'Not enough balance: unlocking downloads costs '.Money::peso($e->required).' and you have '.Money::peso($e->balance).'.',
+            ]);
+        } catch (StylizationNotReadyException) {
+            throw ValidationException::withMessages(['unlock' => 'This model is not ready to download yet.']);
+        }
+
+        return back();
     }
 
     public function destroy(Creation $creation): RedirectResponse

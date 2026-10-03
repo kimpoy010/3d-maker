@@ -14,6 +14,7 @@ use App\Models\Style;
 use App\Models\Stylization;
 use App\Services\Credits\CreditService;
 use App\Services\StylizationService;
+use App\Support\Money;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -31,7 +32,7 @@ class StylizationController extends Controller
             $stylization = $stylizations->create($request->user(), $request->file('photo'), $style);
         } catch (InsufficientCreditsException $e) {
             throw ValidationException::withMessages([
-                'style_id' => "Not enough credits for a preview: it costs {$e->required} and you have {$e->balance}.",
+                'style_id' => 'Not enough balance for a preview: it costs '.Money::peso($e->required).' and you have '.Money::peso($e->balance).'.',
             ]);
         } catch (InvalidImageException) {
             throw ValidationException::withMessages(['photo' => 'We could not read that image. Try another photo.']);
@@ -67,7 +68,7 @@ class StylizationController extends Controller
             $creation = $stylizations->approve($request->user(), $stylization);
         } catch (InsufficientCreditsException $e) {
             throw ValidationException::withMessages([
-                'approve' => "Not enough credits: building the 3D model costs {$e->required} and you have {$e->balance}.",
+                'approve' => 'Not enough balance: building the 3D model costs '.Money::peso($e->required).' and you have '.Money::peso($e->balance).'.',
             ]);
         } catch (StylizationNotReadyException) {
             throw ValidationException::withMessages(['approve' => 'This preview can no longer be approved.']);
@@ -86,7 +87,7 @@ class StylizationController extends Controller
             $new = $stylizations->retry($request->user(), $stylization);
         } catch (InsufficientCreditsException $e) {
             throw ValidationException::withMessages([
-                'retry' => "Not enough credits for another preview: it costs {$e->required} and you have {$e->balance}.",
+                'retry' => 'Not enough balance for another preview: it costs '.Money::peso($e->required).' and you have '.Money::peso($e->balance).'.',
             ]);
         } catch (StylizationNotReadyException) {
             throw ValidationException::withMessages(['retry' => 'This preview cannot be retried.']);

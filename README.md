@@ -29,10 +29,19 @@ changing `.env`. Real providers implement `App\Services\ModelProviders\ModelProv
 
 A customer's photo is first restyled by an image model, then the approved picture is turned into a 3D model:
 
-1. Upload a photo and pick a style. A restyle preview is made (a small credit fee).
+1. Upload a photo and pick a style. A restyle preview is made (₱25 by default).
 2. Review the preview next to the original. **Try again** makes a new preview (another fee, the old one is discarded).
-3. **Build 3D model** approves the preview and charges the style's price.
-4. The 3D provider builds a GLB for the on-screen viewer and an STL print file.
+3. **Build 3D model** approves the preview and charges the style's price (₱50 by default).
+4. The 3D provider builds a GLB for the on-screen viewer and an STL print file. Viewing the model is free.
+5. **Unlock downloads** (₱100 by default) pays once per creation to download both the GLB and the STL.
+
+### Pricing
+
+Customers see pesos. Underneath, the ledger stores credits where **1 credit = ₱1**, so ₱25 is 25 credits. Prices are config: `CREDITS_RESTYLE_COST`, `CREDITS_DOWNLOAD_COST`, the per-style `credit_cost` (seeded at 50) and the free `CREDITS_SIGNUP` balance (100). Failed steps are refunded automatically.
+
+### Running the tests
+
+The suite resets its database and must only ever run on in-memory SQLite (`phpunit.xml`). A cached config (`php artisan config:cache`) ignores `phpunit.xml`, so `tests/TestCase.php` refuses to boot in that case; run `php artisan config:clear` first. Do not `config:cache` on a development machine.
 
 ### Configuration
 

@@ -79,7 +79,7 @@ it('offers a sleepy look for people and pets', function () {
     $sleepy = Style::where('look', 'sleepy')->orderBy('subject')->get();
 
     expect($sleepy->pluck('subject')->map->value->all())->toBe(['person', 'pet'])
-        ->and($sleepy->every(fn (Style $style) => $style->credit_cost === 5))->toBeTrue();
+        ->and($sleepy->every(fn (Style $style) => $style->credit_cost === 50))->toBeTrue();
 });
 
 it('asks figure styles for a full-body shot on a plain background', function () {

@@ -10,7 +10,7 @@ import AppLogo from './AppLogo.vue';
 const mainNavItems: NavItem[] = [
     { title: 'Create', href: '/create', icon: Sparkles },
     { title: 'My Creations', href: '/creations', icon: Box },
-    { title: 'Credits', href: '/credits', icon: Coins },
+    { title: 'Wallet', href: '/credits', icon: Coins },
 ];
 </script>
 

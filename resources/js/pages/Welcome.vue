@@ -45,7 +45,7 @@ const steps = [
                     <div class="flex flex-wrap gap-3">
                         <Button size="lg" as-child><Link :href="user ? '/create' : '/register'">Start creating for free</Link></Button>
                     </div>
-                    <p class="text-sm text-muted-foreground">New accounts start with free credits.</p>
+                    <p class="text-sm text-muted-foreground">New accounts start with a free ₱100 balance.</p>
                 </div>
                 <ModelViewer src="/samples/demo.glb" />
             </section>

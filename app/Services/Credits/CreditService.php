@@ -42,6 +42,12 @@ class CreditService
         return $this->charge($user, $amount, LedgerReason::Stylize, ['stylization_id' => $stylization->id]);
     }
 
+    /** Charge the one-time download unlock for a creation. The ledger's unique index allows one per creation. */
+    public function spendForDownload(User $user, int $amount, Creation $creation): CreditLedgerEntry
+    {
+        return $this->charge($user, $amount, LedgerReason::Download, ['creation_id' => $creation->id]);
+    }
+
     /** Give back what a creation cost. Returns null if there is nothing to refund. */
     public function refund(Creation $creation): ?CreditLedgerEntry
     {

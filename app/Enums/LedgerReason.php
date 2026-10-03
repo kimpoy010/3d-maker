@@ -10,4 +10,5 @@ enum LedgerReason: string
     case Refund = 'refund';
     case Stylize = 'stylize';
     case StylizeRefund = 'stylize_refund';
+    case Download = 'download';
 }
