@@ -17,6 +17,7 @@ class CreationFileController extends Controller
         $path = match ($type) {
             'source' => $creation->source_image_path,
             'model' => $creation->model_path,
+            'print' => $creation->print_model_path,
             'thumbnail' => $creation->thumbnail_path,
         };
 
@@ -30,6 +31,11 @@ class CreationFileController extends Controller
 
         if ($type === 'model' && $request->boolean('download')) {
             return $disk->download($path, "creation-{$creation->id}.glb", $headers);
+        }
+
+        if ($type === 'print') {
+            // The STL is only ever a download, never rendered in the page.
+            return $disk->download($path, "creation-{$creation->id}.stl", $headers + ['Cache-Control' => 'private, no-cache']);
         }
 
         // The photo derivatives are personal: the browser must revalidate so a deleted

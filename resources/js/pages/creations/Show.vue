@@ -15,7 +15,7 @@ type Creation = {
     cost_credits: number;
     created_at: string;
     style: { name: string; subject: string; look: string };
-    urls: { source: string; model: string | null; thumbnail: string | null; download: string | null };
+    urls: { source: string; model: string | null; thumbnail: string | null; download: string | null; download_stl: string | null };
 };
 
 const props = defineProps<{ creation: Creation }>();
@@ -106,6 +106,7 @@ function remove() {
                 <ModelViewer :src="creation.urls.model" />
                 <div class="flex flex-wrap gap-3">
                     <Button v-if="creation.urls.download" as-child><a :href="creation.urls.download">Download GLB</a></Button>
+                    <Button v-if="creation.urls.download_stl" variant="outline" as-child><a :href="creation.urls.download_stl">Download STL</a></Button>
                     <Button variant="outline" :disabled="busy" @click="remove">Delete</Button>
                 </div>
             </section>

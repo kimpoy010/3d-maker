@@ -9,7 +9,7 @@ const props = withDefaults(defineProps<{ src: string; autoRotate?: boolean }>(),
 const container = ref<HTMLDivElement | null>(null);
 const state = ref<'loading' | 'ready' | 'error'>('loading');
 const rotating = ref(props.autoRotate);
-const preset = ref<'studio' | 'soft'>('studio');
+const preset = ref<'studio' | 'soft'>('soft');
 
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;

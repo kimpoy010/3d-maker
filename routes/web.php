@@ -24,7 +24,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('creations/{creation}', [CreationController::class, 'destroy'])->name('creations.destroy');
     Route::post('creations/{creation}/retry', [CreationController::class, 'retry'])->middleware('throttle:generate')->name('creations.retry');
     Route::get('creations/{creation}/files/{type}', CreationFileController::class)
-        ->whereIn('type', ['source', 'model', 'thumbnail'])
+        ->whereIn('type', ['source', 'model', 'print', 'thumbnail'])
         ->name('creations.files');
 
     Route::post('stylizations', [StylizationController::class, 'store'])->middleware('throttle:generate')->name('stylizations.store');

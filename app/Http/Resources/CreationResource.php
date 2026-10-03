@@ -35,6 +35,7 @@ class CreationResource extends JsonResource
                 'model' => $this->model_path ? $file('model') : null,
                 'thumbnail' => $this->thumbnail_path ? $file('thumbnail') : null,
                 'download' => $this->model_path ? $file('model', ['download' => 1]) : null,
+                'download_stl' => $this->print_model_path ? $file('print') : null,
             ],
         ];
     }

@@ -104,3 +104,22 @@ it('serves creation files with safe, privacy-aware headers', function () {
     $cache = $this->actingAs($this->owner)->get("/creations/{$id}/files/model")->headers->get('Cache-Control');
     expect($cache)->toContain('max-age=3600')->toContain('private');
 });
+
+it('offers the STL download only when one was built, and only to the owner', function () {
+    $id = $this->creation->id;
+
+    $this->actingAs($this->owner)->get("/creations/{$id}")->assertInertia(fn (Assert $page) => $page
+        ->where('creation.urls.download_stl', null));
+    $this->actingAs($this->owner)->get("/creations/{$id}/files/print")->assertNotFound();
+
+    Storage::disk('local')->put("creations/{$id}/print.stl", 'solid test');
+    $this->creation->update(['print_model_path' => "creations/{$id}/print.stl"]);
+
+    $this->actingAs($this->owner)->get("/creations/{$id}")->assertInertia(fn (Assert $page) => $page
+        ->where('creation.urls.download_stl', "/creations/{$id}/files/print"));
+    $this->actingAs($this->owner)->get("/creations/{$id}/files/print")
+        ->assertOk()
+        ->assertHeader('content-disposition', 'attachment; filename=creation-'.$id.'.stl')
+        ->assertHeader('X-Content-Type-Options', 'nosniff');
+    $this->actingAs($this->other)->get("/creations/{$id}/files/print")->assertForbidden();
+});
