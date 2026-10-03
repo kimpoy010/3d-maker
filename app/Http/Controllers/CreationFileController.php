@@ -24,18 +24,21 @@ class CreationFileController extends Controller
         $disk = Storage::disk('local');
         abort_if(! $path || ! $disk->exists($path), 404);
 
+        // creation-29-20261003-172648.glb: the id plus when the model was made (app timezone).
+        $name = "creation-{$creation->id}-{$creation->created_at->format('Ymd-His')}";
+
         $headers = [
             'X-Content-Type-Options' => 'nosniff',
             'Content-Security-Policy' => 'sandbox',
         ];
 
         if ($type === 'model' && $request->boolean('download')) {
-            return $disk->download($path, "creation-{$creation->id}.glb", $headers);
+            return $disk->download($path, "{$name}.glb", $headers);
         }
 
         if ($type === 'print') {
             // The STL is only ever a download, never rendered in the page.
-            return $disk->download($path, "creation-{$creation->id}.stl", $headers + ['Cache-Control' => 'private, no-cache']);
+            return $disk->download($path, "{$name}.stl", $headers + ['Cache-Control' => 'private, no-cache']);
         }
 
         // The photo derivatives are personal: the browser must revalidate so a deleted

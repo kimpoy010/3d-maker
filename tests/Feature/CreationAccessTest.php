@@ -49,7 +49,7 @@ it('serves files to the owner and supports download', function () {
     $this->actingAs($this->owner)->get("/creations/{$id}/files/model")->assertOk();
     $this->actingAs($this->owner)->get("/creations/{$id}/files/model?download=1")
         ->assertOk()
-        ->assertHeader('content-disposition', 'attachment; filename=creation-'.$id.'.glb');
+        ->assertHeader('content-disposition', 'attachment; filename=creation-'.$id.'-'.$this->creation->created_at->format('Ymd-His').'.glb');
     $this->actingAs($this->owner)->get("/creations/{$id}/files/thumbnail")->assertNotFound();
 });
 
@@ -119,7 +119,7 @@ it('offers the STL download only when one was built, and only to the owner', fun
         ->where('creation.urls.download_stl', "/creations/{$id}/files/print"));
     $this->actingAs($this->owner)->get("/creations/{$id}/files/print")
         ->assertOk()
-        ->assertHeader('content-disposition', 'attachment; filename=creation-'.$id.'.stl')
+        ->assertHeader('content-disposition', 'attachment; filename=creation-'.$id.'-'.$this->creation->created_at->format('Ymd-His').'.stl')
         ->assertHeader('X-Content-Type-Options', 'nosniff');
     $this->actingAs($this->other)->get("/creations/{$id}/files/print")->assertForbidden();
 });
