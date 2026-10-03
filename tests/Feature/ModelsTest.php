@@ -224,3 +224,12 @@ it('asks the person sleepy figure for squat chibi proportions', function () {
 
     expect($prompt)->toContain('oversized head about 40 to 45 percent')->toContain('short legs');
 });
+
+it('gives every seeded style a thumbnail that exists in public', function () {
+    $this->seed(StyleSeeder::class);
+
+    foreach (Style::all() as $style) {
+        expect($style->preview_image)->toBe("images/styles/{$style->subject->value}-{$style->look}.jpg")
+            ->and(public_path($style->preview_image))->toBeFile();
+    }
+});

@@ -32,6 +32,7 @@ class CreationController extends Controller
                     'subject' => $s->subject->value,
                     'name' => $s->name,
                     'look' => $s->look,
+                    'preview' => $s->preview_image ? '/'.$s->preview_image : null,
                     'credit_cost' => $s->credit_cost,
                 ])->values(),
             'balance' => $credits->balance($request->user()),

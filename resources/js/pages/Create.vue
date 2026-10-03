@@ -7,7 +7,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import type { BreadcrumbItem } from '@/types';
 
 type Subject = 'person' | 'pet' | 'object';
-type StyleOption = { id: number; subject: Subject; name: string; look: string; credit_cost: number };
+type StyleOption = { id: number; subject: Subject; name: string; look: string; preview: string | null; credit_cost: number };
 
 const props = defineProps<{ styles: StyleOption[]; balance: number; restyle_cost: number; download_cost: number }>();
 
@@ -127,12 +127,14 @@ onBeforeUnmount(() => {
                         :key="style.id"
                         type="button"
                         :aria-pressed="form.style_id === style.id"
-                        class="rounded-xl border p-4 text-left transition-colors"
+                        class="overflow-hidden rounded-xl border text-left transition-colors"
                         :class="form.style_id === style.id ? 'border-primary ring-2 ring-primary/30' : 'hover:bg-muted/40'"
                         @click="form.style_id = style.id"
                     >
-                        <span class="block font-medium">{{ style.name }}</span>
-                        <span class="mt-1 block text-xs text-muted-foreground">{{ peso(style.credit_cost) }} to build</span>
+                        <span class="block aspect-[2/3] w-full bg-muted">
+                            <img v-if="style.preview" :src="style.preview" :alt="`${style.name} style sample`" loading="lazy" class="size-full object-cover" />
+                        </span>
+                        <span class="block px-3 py-2 font-medium">{{ style.name }}</span>
                     </button>
                 </div>
                 <p v-if="visibleStyles.length === 0" class="text-sm text-muted-foreground">No styles available for this subject yet.</p>
