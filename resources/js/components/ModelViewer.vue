@@ -10,6 +10,7 @@ const container = ref<HTMLDivElement | null>(null);
 const state = ref<'loading' | 'ready' | 'error'>('loading');
 const rotating = ref(props.autoRotate);
 const preset = ref<'studio' | 'soft'>('soft');
+const look = ref<'textured' | 'clay'>('textured');
 
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;
@@ -20,6 +21,8 @@ let frame = 0;
 let loadId = 0;
 let resizeObserver: ResizeObserver | null = null;
 let lights: THREE.Light[] = [];
+// One plain matte material shared by every mesh in clay view; the painted ones are kept on the mesh.
+const clayMaterial = new THREE.MeshStandardMaterial({ color: 0xd8d4cd, roughness: 0.92, metalness: 0 });
 
 function makeDirectional(color: number, intensity: number, x: number, y: number, z: number) {
     const light = new THREE.DirectionalLight(color, intensity);
@@ -34,6 +37,15 @@ function applyPreset() {
         ? [new THREE.HemisphereLight(0xffffff, 0x666677, 1.1), makeDirectional(0xffffff, 2.2, 3, 5, 4)]
         : [new THREE.HemisphereLight(0xffffff, 0xddddee, 2.2), makeDirectional(0xfff2e0, 0.6, -2, 3, 2)];
     lights.forEach((l) => scene!.add(l));
+}
+
+function applyLook() {
+    model?.traverse((node) => {
+        const mesh = node as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.userData.original ??= mesh.material;
+        mesh.material = look.value === 'clay' ? clayMaterial : mesh.userData.original;
+    });
 }
 
 function resize() {
@@ -67,7 +79,9 @@ function disposeModel() {
         const mesh = node as THREE.Mesh;
         if (!mesh.isMesh) return;
         mesh.geometry.dispose();
-        (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach((m) => {
+        // Dispose the model's own materials, not the shared clay one (released on unmount).
+        const own = mesh.userData.original ?? mesh.material;
+        (Array.isArray(own) ? own : [own]).forEach((m: THREE.Material) => {
             for (const value of Object.values(m)) {
                 if (value instanceof THREE.Texture) value.dispose();
             }
@@ -88,6 +102,7 @@ function load(url: string) {
             if (id !== loadId || !scene) return;
             model = gltf.scene;
             scene.add(model);
+            applyLook();
             frameModel(model);
             state.value = 'ready';
         },
@@ -136,6 +151,7 @@ onMounted(() => {
 
 watch(() => props.src, (url) => load(url));
 watch(preset, applyPreset);
+watch(look, applyLook);
 watch(rotating, (value) => {
     if (controls) controls.autoRotate = value;
 });
@@ -145,6 +161,7 @@ onBeforeUnmount(() => {
     cancelAnimationFrame(frame);
     resizeObserver?.disconnect();
     disposeModel();
+    clayMaterial.dispose();
     controls?.dispose();
     renderer?.dispose();
     renderer?.forceContextLoss();
@@ -174,6 +191,9 @@ onBeforeUnmount(() => {
                 @click="preset = preset === 'studio' ? 'soft' : 'studio'"
             >
                 Light: {{ preset === 'studio' ? 'Studio' : 'Soft' }}
+            </button>
+            <button type="button" class="rounded-md border bg-background/80 px-2 py-1 backdrop-blur" @click="look = look === 'clay' ? 'textured' : 'clay'">
+                View: {{ look === 'clay' ? 'Clay' : 'Textured' }}
             </button>
         </div>
     </div>
