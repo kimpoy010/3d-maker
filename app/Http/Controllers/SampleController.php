@@ -11,7 +11,12 @@ class SampleController extends Controller
 {
     public function __invoke(): Response
     {
-        return response(MockAssets::glb(Subject::Person), 200, [
+        $file = resource_path('samples/demo.glb');
+
+        // The shipped sample is a real Meshy build; the generated placeholder only covers a missing file.
+        $glb = is_file($file) ? file_get_contents($file) : MockAssets::glb(Subject::Person);
+
+        return response($glb, 200, [
             'Content-Type' => 'model/gltf-binary',
             'Cache-Control' => 'public, max-age=86400',
         ]);
