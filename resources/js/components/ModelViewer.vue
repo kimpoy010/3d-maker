@@ -10,7 +10,7 @@ const container = ref<HTMLDivElement | null>(null);
 const state = ref<'loading' | 'ready' | 'error'>('loading');
 const rotating = ref(props.autoRotate);
 const preset = ref<'studio' | 'soft'>('soft');
-const look = ref<'textured' | 'clay'>('textured');
+const look = ref<'textured' | 'clay'>('clay');
 
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;
@@ -22,7 +22,7 @@ let loadId = 0;
 let resizeObserver: ResizeObserver | null = null;
 let lights: THREE.Light[] = [];
 // One plain matte material shared by every mesh in clay view; the painted ones are kept on the mesh.
-const clayMaterial = new THREE.MeshStandardMaterial({ color: 0xd8d4cd, roughness: 0.92, metalness: 0 });
+const clayMaterial = new THREE.MeshStandardMaterial({ color: 0x6e6e6e, roughness: 0.92, metalness: 0 });
 
 function makeDirectional(color: number, intensity: number, x: number, y: number, z: number) {
     const light = new THREE.DirectionalLight(color, intensity);
