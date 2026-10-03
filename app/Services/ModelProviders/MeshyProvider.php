@@ -35,6 +35,10 @@ final class MeshyProvider implements ModelProvider
             'target_formats' => ['glb', 'stl'],
         ];
 
+        if ($resolution = config('models.meshy.geometry_resolution')) {
+            $payload['geometry_resolution'] = $resolution;
+        }
+
         if ($model = config('services.meshy.model')) {
             $payload['ai_model'] = $model;
         }
@@ -95,7 +99,7 @@ final class MeshyProvider implements ModelProvider
         return new ProviderResult(ProviderState::Pending, progress: $progress);
     }
 
-    /** The style's face budget, kept inside what Meshy accepts (100 to 300,000). */
+    /** The style's face budget, kept inside what Meshy accepts (1,000 to 100,000). */
     private function polycount(Style $style): int
     {
         $configured = $style->provider_params['target_faces'] ?? null;
@@ -104,7 +108,7 @@ final class MeshyProvider implements ModelProvider
             return (int) config('models.meshy.default_polycount');
         }
 
-        return max(100, min(300000, (int) $configured));
+        return max((int) config('models.meshy.min_polycount'), min((int) config('models.meshy.max_polycount'), (int) $configured));
     }
 
     /** Meshy asset links expire, so the caller always downloads. Only Meshy hosts over https. */

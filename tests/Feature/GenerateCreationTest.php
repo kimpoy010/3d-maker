@@ -285,7 +285,8 @@ it('prevents overlapping runs for the same creation', function () {
     expect($middleware)->toHaveCount(1)
         ->and($middleware[0])->toBeInstanceOf(WithoutOverlapping::class)
         ->and($middleware[0]->key)->toBe(42)
-        ->and($middleware[0]->expiresAfter)->toBeLessThan(90);
+        ->and($middleware[0]->expiresAfter)->toBeGreaterThan((new GenerateCreation(42))->timeout)
+        ->and($middleware[0]->expiresAfter)->toBeLessThan(300);
 });
 
 it('stores the print model next to the preview model on success', function () {

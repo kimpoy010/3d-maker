@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 beforeEach(function () {
-    config(['services.meshy.key' => 'meshy-key', 'services.meshy.model' => null, 'models.meshy.default_polycount' => 30000]);
+    config(['services.meshy.key' => 'meshy-key', 'services.meshy.model' => null, 'models.meshy.geometry_resolution' => null, 'models.meshy.default_polycount' => 30000]);
     $this->image = tempnam(sys_get_temp_dir(), 'img');
     file_put_contents($this->image, fakeJpegBytes(256, 384));
     $this->style = Style::factory()->make(['subject' => Subject::Person, 'provider_params' => ['target_faces' => 20000]]);
@@ -151,6 +151,17 @@ describe('start', function () {
         })->once();
     });
 
+    it('asks for the configured geometry resolution only when one is set', function () {
+        Http::fake(['api.meshy.ai/*' => Http::response(['result' => 'task_1'], 202)]);
+
+        $this->provider->start($this->image, $this->style);
+        Http::assertSent(fn (Request $r) => ! array_key_exists('geometry_resolution', $r->data()));
+
+        config(['services.meshy.model' => 'latest', 'models.meshy.geometry_resolution' => '4k']);
+        $this->provider->start($this->image, $this->style);
+        Http::assertSent(fn (Request $r) => ($r->data()['geometry_resolution'] ?? null) === '4k' && $r->data()['ai_model'] === 'latest');
+    });
+
     it('clamps or replaces an unusable target polycount', function (mixed $configured, int $sent) {
         Http::fake(['api.meshy.ai/*' => Http::response(['result' => 't'], 202)]);
 
@@ -162,8 +173,8 @@ describe('start', function () {
         'zero' => [0, 30000],
         'negative' => [-5, 30000],
         'not a number' => ['abc', 30000],
-        'too high' => [1000000000, 300000],
-        'too low' => [50, 100],
+        'too high' => [1000000000, 100000],
+        'too low' => [50, 1000],
     ]);
 
     it('never logs the key or image bytes', function () {

@@ -34,5 +34,7 @@
         <env name="STYLIZER_ENABLED" value="true"/>
         <env name="OPENAI_API_KEY" value=""/>
         <env name="MESHY_API_KEY" value=""/>
+        <env name="MESHY_MODEL" value=""/>
+        <env name="MESHY_GEOMETRY_RESOLUTION" value=""/>
     </php>
 </phpunit>

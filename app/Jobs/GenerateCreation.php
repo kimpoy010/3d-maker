@@ -36,20 +36,20 @@ class GenerateCreation implements ShouldQueue
      * Hard per-attempt limit for the worker. Must stay below the overlap lock's
      * expiry, which must stay below the queue connection's retry_after (300s).
      */
-    public int $timeout = 60;
+    public int $timeout = 120;
 
     public function __construct(public int $creationId) {}
 
     /**
-     * One run per creation at a time. The lock expires (80s) after the worker's
-     * timeout (60s) but before retry_after (300s), so a crashed run frees the lock
+     * One run per creation at a time. The lock expires (200s) after the worker's
+     * timeout (120s) but before retry_after (300s), so a crashed run frees the lock
      * before the queue hands the job to another worker.
      *
      * @return list<object>
      */
     public function middleware(): array
     {
-        return [(new WithoutOverlapping($this->creationId))->releaseAfter(5)->expireAfter(80)];
+        return [(new WithoutOverlapping($this->creationId))->releaseAfter(5)->expireAfter(200)];
     }
 
     /**

@@ -49,7 +49,8 @@ A customer's photo is first restyled by an image model, then the approved pictur
 | `OPENAI_IMAGE_SIZE` | `1024x1536` | Image size passed to OpenAI. |
 | `MODEL_PROVIDER` | `mock` | 3D provider: `mock` or `meshy`. |
 | `MESHY_API_KEY` | empty | Meshy key, used when `MODEL_PROVIDER=meshy`. |
-| `MESHY_MODEL` | unset | Optional Meshy model version (`ai_model`). Unset uses Meshy's default. |
+| `MESHY_MODEL` | unset | Meshy model version (`ai_model`). Use `latest` (Meshy 7.1) for the best detail; unset uses Meshy's default. |
+| `MESHY_GEOMETRY_RESOLUTION` | unset | `standard`, `2k` or `4k`. Higher is smoother (finest surface detail) and costs 5 extra Meshy credits per build; needs `MESHY_MODEL=latest` or `meshy-7.1`. Unset sends nothing. |
 | `CREDITS_RESTYLE_COST` | `1` | Credits charged per preview, including each retry. |
 | `STYLIZER_RETENTION_DAYS` | `7` | Unapproved previews are discarded after this many days. |
 | `STYLIZER_DAILY_LIMIT` | `30` | Most previews (retries included) one user may start per day. |
