@@ -39,11 +39,11 @@ Not in v1: printing and shipping orders, AI-generated artwork, press-the-button 
 
 `config` fields (all in millimetres): `cap.shape` (`rect`, `rounded`, `circle`), `cap.width`, `cap.height`, `cap.corner_radius`, `cap.top_z` (the height of the cap surface), `artwork_area` (x, y, width, height inside the cap), `base_thickness`, `max_layer_height`, `min_feature` (smallest printable detail, for example 0.8), and `switch` (a text note, for example "Kailh 5-pin", shown to the user).
 
-**`clickers`**: `id`, `user_id`, `clicker_body_id`, `name`, `artwork_path` (private PNG), `settings` (JSON, below), `thumbnail_path`, `status` (`draft`, `building`, `ready`, `failed`), `build_error`, `threemf_path`, `stl_zip_path`, `downloads_unlocked_at`, timestamps.
+**`clickers`**: `id`, `user_id`, `clicker_body_id`, `name`, `artwork_path` (private PNG), `settings` (JSON, below), `thumbnail_path`, `status` (`draft`, `building`, `ready`, `failed`), `build_error`, `threemf_path`, `stl_zip_path`, `downloads_unlocked_at`, `unlock_attempts` (how many times the user has paid to unlock it), `build_started_at` (used by the sweeper), timestamps.
 
-`settings`: `colors` (list of `{hex, height_mm, enabled}`, 2 to 8 entries), `color_count`, `scale` (0.1 to 1.0 of the artwork area), `offset_x`, `offset_y` (millimetres), `outline_mm` (0 to 2, an outline band between colours), `outline_hex`.
+`settings`: `colors` (list of `{hex, height_mm, enabled}`, 1 to 8 entries), `color_count`, `scale` (0.1 to 1.0 of the artwork area), `offset_x`, `offset_y` (millimetres), `outline_mm` (0 to 2, an outline band between colours), `outline_hex`.
 
-**`credit_ledger`**: add nullable `clicker_id` with a unique index on (`clicker_id`, `reason`), the same pattern as `creation_id` and `stylization_id`. New reasons: `clicker_download` and `clicker_refund`. One charge per design, and one refund per charge.
+**`credit_ledger`**: add nullable `clicker_id` and `clicker_attempt` with a unique index on (`clicker_id`, `reason`, `clicker_attempt`). New reasons: `clicker_download` and `clicker_refund`. Each unlock is one numbered attempt: one charge per attempt, and at most one refund per charge. A failed build refunds its attempt, and unlocking again is attempt 2, so a retry after a refund does not collide with the first charge.
 
 **Config** (`config/credits.php` and `config/clicker.php`): `CREDITS_CLICKER_COST` (default 50), `CLICKER_MAX_PER_USER` (20), upload limits (10 MB, 256 to 4096 px), `CLICKER_NODE_BINARY` (default `node`), `CLICKER_BUILD_TIMEOUT` (90 s).
 
@@ -52,24 +52,24 @@ Not in v1: printing and shipping orders, AI-generated artwork, press-the-button 
 - **`ClickerController`**: index, create, show/edit, store, update, duplicate, destroy. A locked (unlocked-for-download) design rejects updates.
 - **`ClickerArtworkController`**: upload. The file is re-encoded with GD to a PNG, capped at 4096 px on a side, and stored privately. Only real raster images pass. The server never parses SVG.
 - **`ClickerService`**: `save`, `duplicate`, and `unlock`. `unlock` locks the clicker row, then the user row (the same order rule as the other money paths), charges, sets `downloads_unlocked_at`, sets `status=building`, and dispatches `BuildClickerFiles` only after the transaction commits. It is idempotent: unlocking twice charges once.
-- **`BuildClickerFiles` job**: writes a job folder with the artwork, settings and body config, runs `node resources/clicker/build.mjs <job-folder>` as a process with an argument array (no shell string), a timeout, and a memory cap, then records the 3MF and zip paths and sets `status=ready`. On failure it sets `status=failed`, refunds in the same transaction as the status change, and logs without personal data. A `WithoutOverlapping` lock covers one build per design, and the timeout, lock expiry and queue `retry_after` keep the invariant already used elsewhere (job timeout under lock expiry under `retry_after`).
+- **`BuildClickerFiles` job**: writes a job folder with the artwork, settings and body config, runs `node resources/clicker/build.mjs <job-folder>` as a process with an argument array (no shell string), a timeout, and a memory cap, then records the 3MF and zip paths and sets `status=ready`. On failure it sets `status=failed`, clears `downloads_unlocked_at`, and refunds the latest attempt in the same transaction as the status change, then logs without personal data. The user can unlock again, which is a new numbered attempt. A `WithoutOverlapping` lock covers one build per design, and the timeout, lock expiry and queue `retry_after` keep the invariant already used elsewhere (job timeout under lock expiry under `retry_after`).
 - **Sweeper**: the existing five-minute sweep also fails and refunds any clicker in `building` longer than the build deadline plus a grace period.
 - **`ClickerFileController`**: owner-only. Thumbnail and artwork are served inline. The 3MF and the zip are downloads and require `downloads_unlocked_at` and `status=ready`. All responses send `nosniff` and a sandbox CSP, and personal images use `private, no-cache`.
 - **Pricing messages** use `App\Support\Money::peso()`, for example "Unlocking downloads costs ₱50 and you have ₱20."
 
 ## 5. Shared geometry module
 
-`resources/clicker/geometry.js` is plain ESM with no DOM dependency. The editor imports it through Vite for the live preview, and `build.mjs` imports the same file in Node, so the preview and the printed files match.
+`resources/clicker/geometry.js` is plain ESM with no DOM dependency. The pipeline is split in two so the editor stays responsive: `analyzeArtwork` (slow: palette snapping, clean-up, tracing) and `buildParts` (fast: extrusion), so a height change only re-runs the fast half. The editor imports the module through Vite for the live preview, and `build.mjs` imports the same file in Node, so the preview and the printed files match.
 
 Input: decoded RGBA pixels, `settings`, the body `config`, and a `quality` (`preview` at up to 1024 px, `final` at up to 2048 px). Output: a list of parts `{name, hex, positions, indices}` and a list of print notes.
 
 Pipeline:
 
 1. Treat pixels with alpha below 128 as background.
-2. Reduce to `color_count` colours (clustering), then snap each pixel to the nearest enabled colour of the user's palette. Disabled colours become background.
-3. Remove specks and slivers below `min_feature` by merging them into their neighbours. Record a print note for each change.
+2. Suggest `color_count` colours (median cut refined by a few k-means passes, deterministic) when new artwork is loaded. After that the palette in the settings is the only source of truth: snap each pixel to the nearest enabled colour of the user's palette. Disabled colours become background.
+3. Merge regions smaller than `min_feature` squared into their biggest neighbour and record a print note. Details thinner than `min_feature` are not removed; they are checked on a small copy of the grid (so the live preview stays fast) and reported as print notes.
 4. Scale and position the artwork inside `artwork_area`, then mask to the cap shape so nothing overhangs the body.
-5. Trace each colour mask into polygons with holes (marching squares, simplified), converted to millimetres.
+5. Trace each colour mask into polygons with holes by following pixel edges (4-connected regions, collinear points merged, no smoothing), converted to millimetres. The outlines are exact, so they cannot self-intersect.
 6. Extrude each colour from `cap.top_z` to `cap.top_z + height_mm`. Colours do not overlap, so each part is a closed solid and no 3D boolean operation is needed. An optional outline band is its own part.
 
 Node dependencies: `pngjs` (read the PNG) and `fflate` (write the zip and 3MF containers). The body mesh is parsed from STL by a small reader in the module.
