@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\ClickerController;
+use App\Http\Controllers\ClickerFileController;
 use App\Http\Controllers\CreationController;
 use App\Http\Controllers\CreationFileController;
 use App\Http\Controllers\CreditController;
@@ -32,6 +34,18 @@ Route::middleware('auth')->group(function () {
     Route::get('creations/{creation}/files/{type}', CreationFileController::class)
         ->whereIn('type', ['source', 'model', 'print', 'thumbnail'])
         ->name('creations.files');
+
+    Route::get('clickers', [ClickerController::class, 'index'])->name('clickers.index');
+    Route::get('clickers/create', [ClickerController::class, 'create'])->name('clickers.create');
+    Route::post('clickers', [ClickerController::class, 'store'])->middleware('throttle:clicker')->name('clickers.store');
+    Route::get('clickers/{clicker}', [ClickerController::class, 'show'])->name('clickers.show');
+    Route::put('clickers/{clicker}', [ClickerController::class, 'update'])->middleware('throttle:clicker')->name('clickers.update');
+    Route::delete('clickers/{clicker}', [ClickerController::class, 'destroy'])->name('clickers.destroy');
+    Route::post('clickers/{clicker}/duplicate', [ClickerController::class, 'duplicate'])->middleware('throttle:clicker')->name('clickers.duplicate');
+    Route::post('clickers/{clicker}/unlock', [ClickerController::class, 'unlock'])->middleware('throttle:clicker')->name('clickers.unlock');
+    Route::get('clickers/{clicker}/files/{type}', ClickerFileController::class)
+        ->whereIn('type', ['artwork', 'thumbnail', '3mf', 'stl'])
+        ->name('clickers.files');
 
     Route::post('stylizations', [StylizationController::class, 'store'])->middleware('throttle:generate')->name('stylizations.store');
     Route::get('stylizations/{stylization}', [StylizationController::class, 'show'])->name('stylizations.show');
