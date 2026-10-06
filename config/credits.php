@@ -14,6 +14,9 @@ return [
     // Charged once per creation to download its GLB and STL.
     'download_cost' => (int) env('CREDITS_DOWNLOAD_COST', 100),
 
+    // Charged once per clicker design to download its 3MF and STL files.
+    'clicker_cost' => (int) env('CREDITS_CLICKER_COST', 50),
+
     // The stub top-up is a free-credits button, so it is off in production by default.
     'stub_topup' => env('CREDITS_STUB_TOPUP', env('APP_ENV') !== 'production'),
 ];
