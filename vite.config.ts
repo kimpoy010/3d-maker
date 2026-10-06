@@ -23,6 +23,7 @@ export default defineConfig({
     resolve: {
         alias: {
             '@': path.resolve(__dirname, './resources/js'),
+            '@clicker': path.resolve(__dirname, './resources/clicker'),
         },
     },
     css: {

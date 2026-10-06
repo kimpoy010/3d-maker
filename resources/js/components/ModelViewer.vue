@@ -3,8 +3,10 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import type { Part } from '@/lib/clicker';
 
-const props = withDefaults(defineProps<{ src: string; autoRotate?: boolean; defaultLook?: 'textured' | 'clay' }>(), {
+// Either `src` (a GLB to download) or `parts` (meshes built in the browser, millimetres, Z up).
+const props = withDefaults(defineProps<{ src?: string; parts?: Part[]; autoRotate?: boolean; defaultLook?: 'textured' | 'clay' }>(), {
     autoRotate: true,
     defaultLook: 'clay',
 });
@@ -24,6 +26,9 @@ let frame = 0;
 let loadId = 0;
 let resizeObserver: ResizeObserver | null = null;
 let lights: THREE.Light[] = [];
+// Parts mode re-builds the model on every edit; the camera is framed once so the view does not jump.
+let framedOnce = false;
+const centerOffset = new THREE.Vector3();
 // One plain matte material shared by every mesh in clay view; the painted ones are kept on the mesh.
 const clayMaterial = new THREE.MeshStandardMaterial({ color: 0x6e6e6e, roughness: 0.92, metalness: 0 });
 
@@ -117,6 +122,53 @@ function load(url: string) {
     );
 }
 
+function showParts(list: Part[]) {
+    if (!scene) return;
+    loadId++; // cancels any download still in flight
+    disposeModel();
+
+    const group = new THREE.Group();
+    for (const part of list) {
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(part.positions, 3));
+        geometry.setIndex(new THREE.BufferAttribute(part.indices, 1));
+        geometry.computeVertexNormals();
+        group.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: part.hex, roughness: 0.65, metalness: 0 })));
+    }
+    group.rotation.x = -Math.PI / 2; // parts are built with Z up; the scene is Y up
+
+    model = group;
+    scene.add(group);
+    applyLook();
+
+    if (framedOnce) {
+        group.position.copy(centerOffset);
+    } else {
+        frameModel(group);
+        centerOffset.copy(group.position);
+        framedOnce = true;
+    }
+    state.value = 'ready';
+}
+
+/** A small PNG (at most 480 px) of what the viewer shows right now, or null when nothing can be drawn. */
+function snapshot(): Promise<Blob | null> {
+    return new Promise((resolve) => {
+        if (!renderer || !scene || !camera) return resolve(null);
+        renderer.render(scene, camera); // render and copy in the same task so the buffer is still filled
+
+        const source = renderer.domElement;
+        const scale = Math.min(1, 480 / Math.max(source.width, source.height));
+        const copy = document.createElement('canvas');
+        copy.width = Math.max(1, Math.round(source.width * scale));
+        copy.height = Math.max(1, Math.round(source.height * scale));
+        copy.getContext('2d')?.drawImage(source, 0, 0, copy.width, copy.height);
+        copy.toBlob((blob) => resolve(blob), 'image/png');
+    });
+}
+
+defineExpose({ snapshot });
+
 function tick() {
     frame = requestAnimationFrame(tick);
     controls?.update();
@@ -148,11 +200,17 @@ onMounted(() => {
     resize();
     resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(container.value);
-    load(props.src);
+    if (props.parts) showParts(props.parts);
+    else if (props.src) load(props.src);
     tick();
 });
 
-watch(() => props.src, (url) => load(url));
+watch(() => props.src, (url) => {
+    if (url) load(url);
+});
+watch(() => props.parts, (list) => {
+    if (list) showParts(list);
+});
 watch(preset, applyPreset);
 watch(look, applyLook);
 watch(rotating, (value) => {
