@@ -21,5 +21,6 @@ class DatabaseSeeder extends Seeder
         ]);
 
         $this->call(StyleSeeder::class);
+        $this->call(ClickerBodySeeder::class);
     }
 }
