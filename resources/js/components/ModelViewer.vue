@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Part } from '@/lib/clicker';
 
 // Either `src` (a GLB to download) or `parts` (meshes built in the browser, millimetres, Z up).
@@ -28,6 +29,7 @@ let resizeObserver: ResizeObserver | null = null;
 let lights: THREE.Light[] = [];
 // Parts mode re-builds the model on every edit; the camera is framed once so the view does not jump.
 let framedOnce = false;
+let framedFor = ''; // the size of the first part (the cap) the camera was framed for
 const centerOffset = new THREE.Vector3();
 // One plain matte material shared by every mesh in clay view; the painted ones are kept on the mesh.
 const clayMaterial = new THREE.MeshStandardMaterial({ color: 0x6e6e6e, roughness: 0.92, metalness: 0 });
@@ -127,12 +129,20 @@ function showParts(list: Part[]) {
     loadId++; // cancels any download still in flight
     disposeModel();
 
+    if (list.length === 0) {
+        // Nothing to draw: an empty bounding box would give NaN positions, so start framing afresh next time.
+        framedOnce = false;
+        return;
+    }
+
     const group = new THREE.Group();
     for (const part of list) {
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.BufferAttribute(part.positions, 3));
-        geometry.setIndex(new THREE.BufferAttribute(part.indices, 1));
-        geometry.computeVertexNormals();
+        const indexed = new THREE.BufferGeometry();
+        indexed.setAttribute('position', new THREE.BufferAttribute(part.positions, 3));
+        indexed.setIndex(new THREE.BufferAttribute(part.indices, 1));
+        // Shared vertices would smooth the hard edges of a slab or an extrusion; creased normals keep them sharp.
+        const geometry = toCreasedNormals(indexed, (40 * Math.PI) / 180);
+        indexed.dispose();
         group.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: part.hex, roughness: 0.65, metalness: 0 })));
     }
     group.rotation.x = -Math.PI / 2; // parts are built with Z up; the scene is Y up
@@ -141,12 +151,16 @@ function showParts(list: Part[]) {
     scene.add(group);
     applyLook();
 
-    if (framedOnce) {
+    const first = new THREE.Box3().setFromObject(group.children[0]).getSize(new THREE.Vector3());
+    const sizeKey = `${first.x.toFixed(2)},${first.y.toFixed(2)},${first.z.toFixed(2)}`;
+
+    if (framedOnce && sizeKey === framedFor) {
         group.position.copy(centerOffset);
     } else {
         frameModel(group);
         centerOffset.copy(group.position);
         framedOnce = true;
+        framedFor = sizeKey;
     }
     state.value = 'ready';
 }
@@ -154,7 +168,7 @@ function showParts(list: Part[]) {
 /** A small PNG (at most 480 px) of what the viewer shows right now, or null when nothing can be drawn. */
 function snapshot(): Promise<Blob | null> {
     return new Promise((resolve) => {
-        if (!renderer || !scene || !camera) return resolve(null);
+        if (!renderer || !scene || !camera || state.value !== 'ready') return resolve(null);
         renderer.render(scene, camera); // render and copy in the same task so the buffer is still filled
 
         const source = renderer.domElement;

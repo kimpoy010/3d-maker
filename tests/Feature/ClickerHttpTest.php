@@ -54,7 +54,7 @@ it('lists only the current users designs', function () {
     Clicker::factory()->create(['user_id' => $this->other->id]);
 
     $this->actingAs($this->user)->get('/clickers')->assertInertia(fn (Assert $page) => $page
-        ->component('clickers/Index', false)
+        ->component('clickers/Index')
         ->has('clickers', 1)
         ->where('limit', 3));
 });
@@ -63,7 +63,7 @@ it('shows the editor with the active bodies but never their model files', functi
     ClickerBody::factory()->create(['active' => false]);
 
     $this->actingAs($this->user)->get('/clickers/create')->assertInertia(fn (Assert $page) => $page
-        ->component('clickers/Edit', false)
+        ->component('clickers/Edit')
         ->where('clicker', null)
         ->has('bodies', 1)
         ->where('bodies.0.config.cap.shape', 'rounded')
@@ -135,7 +135,7 @@ it('shows a design to its owner only', function () {
     $clicker = ($this->saved)();
 
     $this->actingAs($this->user)->get("/clickers/{$clicker->id}")->assertInertia(fn (Assert $page) => $page
-        ->component('clickers/Edit', false)
+        ->component('clickers/Edit')
         ->where('clicker.id', $clicker->id)
         ->where('clicker.editable', true)
         ->where('clicker.unlocked', false)
