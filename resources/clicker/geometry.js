@@ -111,7 +111,8 @@ export function buildParts(analysis, settings, body) {
     for (const color of analysis.palette) {
         const polygons = analysis.polygons[color.index];
         if (!color.enabled || !polygons) continue;
-        const height = clamp(color.height_mm, 0.1, body.max_layer_height);
+        // The analysis is frozen; the current heights come from the settings so height edits need no re-analysis.
+        const height = clamp(settings.colors[color.index]?.height_mm ?? color.height_mm, 0.1, body.max_layer_height);
         tallest = Math.max(tallest, height);
         parts.push({
             kind: 'colour',

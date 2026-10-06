@@ -155,59 +155,90 @@ const canSave = computed(
     () =>
         editable.value &&
         !saveForm.processing &&
+        !saving.value &&
         !!body.value &&
         (props.clicker === null ? pixels.value !== null : dirty.value) &&
         settings.value.colors.length > 0,
 );
 
-// After a save the server sends back the stored design; take it as the new baseline.
-watch(
-    () => props.clicker,
-    (clicker) => {
-        if (!clicker) return;
-        name.value = clicker.name;
-        bodyId.value = clicker.body_id;
-        settings.value = clone(clicker.settings);
-        colorCount.value = settings.value.colors.length;
-        artworkBlob.value = null;
-        savedKey.value = snapshotKey();
+// Take the stored design as the new baseline (after a successful save, or when another design is shown).
+function rebaseline(clicker: ClickerData) {
+    name.value = clicker.name;
+    bodyId.value = clicker.body_id;
+    settings.value = clone(clicker.settings);
+    colorCount.value = settings.value.colors.length;
+    artworkBlob.value = null;
+    savedKey.value = snapshotKey();
+}
 
-        if (clicker.id !== loadedFor) {
-            loadedFor = clicker.id;
-            void loadSaved();
-        }
+// Only a different design (first save, Duplicate, navigation) replaces the form here. Other refreshes (polling, a failed
+// save that redirects back) must keep what the user has typed.
+watch(
+    () => props.clicker?.id,
+    (id) => {
+        if (!props.clicker || id === loadedFor) return;
+        loadedFor = id ?? null;
+        rebaseline(props.clicker);
+        void loadSaved();
     },
 );
 
-async function save() {
-    const thumbnail = await viewer.value?.snapshot();
-    const data = {
-        ...(props.clicker ? { _method: 'put' } : {}),
-        name: name.value,
-        clicker_body_id: bodyId.value,
-        settings: {
-            ...settings.value,
-            colors: settings.value.colors.map((c) => ({ hex: c.hex, height_mm: c.height_mm, enabled: c.enabled ? 1 : 0 })),
-        },
-        ...(artworkBlob.value ? { artwork: new File([artworkBlob.value], 'artwork.png', { type: 'image/png' }) } : {}),
-        ...(thumbnail ? { thumbnail: new File([thumbnail], 'thumbnail.png', { type: 'image/png' }) } : {}),
-    };
+const saving = ref(false);
 
-    saveForm.transform(() => data).post(props.clicker ? `/clickers/${props.clicker.id}` : '/clickers', { forceFormData: true, preserveScroll: true });
+async function save() {
+    if (saving.value || saveForm.processing) return;
+    saving.value = true;
+    try {
+        const thumbnail = await viewer.value?.snapshot();
+        const data = {
+            ...(props.clicker ? { _method: 'put' } : {}),
+            name: name.value,
+            clicker_body_id: bodyId.value,
+            settings: {
+                ...settings.value,
+                colors: settings.value.colors.map((c) => ({ hex: c.hex, height_mm: c.height_mm, enabled: c.enabled ? 1 : 0 })),
+            },
+            ...(artworkBlob.value ? { artwork: new File([artworkBlob.value], 'artwork.png', { type: 'image/png' }) } : {}),
+            ...(thumbnail ? { thumbnail: new File([thumbnail], 'thumbnail.png', { type: 'image/png' }) } : {}),
+        };
+
+        saveForm
+            .transform(() => data)
+            .post(props.clicker ? `/clickers/${props.clicker.id}` : '/clickers', {
+                forceFormData: true,
+                preserveScroll: true,
+                onSuccess: () => {
+                    if (props.clicker) rebaseline(props.clicker);
+                },
+                onFinish: () => {
+                    saving.value = false;
+                },
+            });
+    } catch (error) {
+        saving.value = false;
+        throw error;
+    }
 }
 
 // ---- paying, duplicating, deleting, downloading
 const unlockForm = useForm<Record<string, unknown>>({});
 const canUnlock = computed(() => !!props.clicker && !props.clicker.unlocked && ['draft', 'failed'].includes(props.clicker.status));
 const affordable = computed(() => props.balance >= props.unlock_cost);
-const busy = computed(() => saveForm.processing || unlockForm.processing);
+const duplicating = ref(false);
+const busy = computed(() => saveForm.processing || saving.value || unlockForm.processing || duplicating.value);
 
 function unlock() {
     if (props.clicker) unlockForm.post(`/clickers/${props.clicker.id}/unlock`, { preserveScroll: true });
 }
 
 function duplicate() {
-    if (props.clicker) router.post(`/clickers/${props.clicker.id}/duplicate`);
+    if (props.clicker && !duplicating.value) {
+        router.post(
+            `/clickers/${props.clicker.id}/duplicate`,
+            {},
+            { onStart: () => (duplicating.value = true), onFinish: () => (duplicating.value = false) },
+        );
+    }
 }
 
 function remove() {

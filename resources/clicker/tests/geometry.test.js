@@ -35,6 +35,14 @@ test('each colour rises to its own height, clamped to the body maximum', () => {
     assert.deepEqual(tops, [7, 8, 9]); // 6 + 1, 6 + 2, 6 + 3 (10 mm clamped to the 3 mm maximum)
 });
 
+test('new heights in the settings reach the parts without re-running the analysis', () => {
+    const { analysis } = build();
+    const taller = { ...SETTINGS, colors: SETTINGS.colors.map((c, i) => ({ ...c, height_mm: i === 0 ? 2.5 : c.height_mm })) };
+    const tops = buildParts(analysis, taller, BODY).map((p) => +bounds(p)[5].toFixed(3));
+
+    assert.deepEqual(tops, [8.5, 8, 9]);
+});
+
 test('the volume of each part matches the artwork area times its height', () => {
     const { parts, analysis } = build();
     const blue = parts[0];
