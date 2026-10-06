@@ -106,6 +106,25 @@ Customer photos are sent to OpenAI (restyle) and the restyled picture is sent to
 - [ ] Confirm the scheduler runs and `DB_QUEUE_RETRY_AFTER` is above 240.
 - [ ] Set `STYLIZER_PROVIDER=openai` and `MODEL_PROVIDER=meshy` in production (mock is refused).
 
+## Clicker maker
+
+A separate tool, free to design with and paid to download. Users upload flat artwork, the browser splits it into colours and raises each colour to its own height in a live 3D preview, and after paying (default ₱50, once per design) they download a 3MF with one named part per colour plus a zip of one STL per colour.
+
+The geometry lives in `resources/clicker/` as plain JavaScript. The editor imports it for the preview, and the queued job `BuildClickerFiles` runs the same code through Node (`resources/clicker/build.mjs`) to write the paid files, so what you see is what prints. A failed build refunds the unlock automatically and the user can unlock again; the five-minute `creations:sweep` also fails and refunds a build stuck for too long.
+
+**Node is required on every machine that runs the queue worker** (`node --version`, then `npm ci`). Set `CLICKER_NODE_BINARY` if it is not on the PATH.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `CREDITS_CLICKER_COST` | `50` | Price to unlock one design's downloads. |
+| `CLICKER_MAX_PER_USER` | `20` | Saved designs per user. |
+| `CLICKER_NODE_BINARY` | `node` | The Node executable used by the build job. |
+| `CLICKER_BUILD_TIMEOUT` | `90` | Seconds before a build process is killed. |
+
+**Adding a clicker body.** Bodies are model files you have printed and tested. Put the STL (or several) in `resources/clicker/bodies/<slug>/` and add an entry to `database/seeders/ClickerBodySeeder.php` with the cap size, the artwork area, the highest layer, the smallest printable detail and the switch it takes (see `ClickerBody::sampleConfig()` for every field and its unit). Run `php artisan db:seed --class=ClickerBodySeeder`. The development body `placeholder-slab` has no switch cavity: deactivate it (`active => false`) before launch.
+
+**Tests.** `npm run test:clicker` runs the geometry suite (Node); `vendor/bin/pest` runs the rest. The Pest suite refuses to start unless it is on in-memory SQLite: run `php artisan config:clear` first and never run `php artisan config:cache` on a development machine.
+
 ## Tests
 
 `php artisan test` (uses in-memory sqlite; the dev database is MySQL `three_d_maker`).

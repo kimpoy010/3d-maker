@@ -1,7 +1,7 @@
 # Clicker maker: a tool for designing fidget clickers
 
 Date: 2026-10-06
-Status: Draft for review
+Status: Implemented
 
 ## 1. Context and goal
 
