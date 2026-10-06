@@ -2,11 +2,13 @@
 
 use App\Enums\ClickerStatus;
 use App\Enums\LedgerReason;
+use App\Exceptions\ClickerStateException;
 use App\Jobs\BuildClickerFiles;
 use App\Models\Clicker;
 use App\Models\ClickerBody;
 use App\Models\CreditLedgerEntry;
 use App\Models\User;
+use App\Services\Clickers\ClickerService;
 use App\Services\Credits\CreditService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
@@ -218,4 +220,17 @@ it('lets a failed design be unlocked again', function () {
     $this->actingAs($this->user)->post("/clickers/{$clicker->id}/unlock")->assertRedirect();
 
     expect($clicker->fresh()->unlock_attempts)->toBe(2)->and($this->credits->balance($this->user))->toBe(70);
+});
+
+it('turns a delete that loses the race against an unlock into a message, not a 500', function () {
+    $clicker = ($this->saved)();
+
+    $this->mock(ClickerService::class, fn ($mock) => $mock
+        ->shouldReceive('destroy')->once()
+        ->andThrow(new ClickerStateException('This design is being built and cannot be deleted yet.')));
+
+    $this->actingAs($this->user)->delete("/clickers/{$clicker->id}")
+        ->assertSessionHasErrors(['name' => 'This design is being built and cannot be deleted yet.']);
+
+    expect(Clicker::find($clicker->id))->not->toBeNull();
 });

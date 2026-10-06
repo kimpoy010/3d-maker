@@ -112,7 +112,11 @@ class ClickerController extends Controller
     {
         Gate::authorize('delete', $clicker);
 
-        $clickers->destroy($clicker);
+        try {
+            $clickers->destroy($clicker);
+        } catch (ClickerStateException $e) {
+            throw ValidationException::withMessages(['name' => $e->getMessage()]);
+        }
 
         return redirect()->route('clickers.index');
     }
