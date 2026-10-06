@@ -10,6 +10,7 @@ use App\Models\Clicker;
 use App\Models\ClickerBody;
 use App\Models\CreditLedgerEntry;
 use App\Models\User;
+use App\Services\Clickers\ClickerBuilder;
 use App\Services\Clickers\ClickerService;
 use App\Services\Credits\CreditService;
 use Illuminate\Support\Facades\Queue;
@@ -246,4 +247,47 @@ it('dispatches the build for the paid attempt and keys the overlap lock per atte
     $two = new BuildClickerFiles(7, 2);
     expect($one->middleware()[0]->key)->not->toBe($two->middleware()[0]->key)
         ->and((new BuildClickerFiles(7))->middleware()[0]->key)->toBe('7:0');
+});
+
+it('lets a stale attempt job neither build nor delete, while the current attempt and an unnumbered job build', function () {
+    $fake = new class implements ClickerBuilder
+    {
+        public int $calls = 0;
+
+        public function build(Clicker $clicker): array
+        {
+            $this->calls++;
+            Storage::disk('local')->put("clickers/{$clicker->id}/clicker.3mf", 'x');
+            Storage::disk('local')->put("clickers/{$clicker->id}/clicker-stl.zip", 'y');
+
+            return ['threemf' => "clickers/{$clicker->id}/clicker.3mf", 'stl_zip' => "clickers/{$clicker->id}/clicker-stl.zip"];
+        }
+    };
+    app()->instance(ClickerBuilder::class, $fake);
+
+    $clicker = ($this->make)();
+    $this->service->unlock($this->user, $clicker);
+    $this->service->markFailed($clicker->id, 'first failed', 1);
+    $this->service->unlock($this->user, $clicker->fresh());
+    $disk = Storage::disk('local');
+    $disk->put("clickers/{$clicker->id}/clicker.3mf", 'current');
+
+    (new BuildClickerFiles($clicker->id, 1))->handle(app(ClickerBuilder::class), app(ClickerService::class));
+
+    expect($fake->calls)->toBe(0)
+        ->and($clicker->fresh()->status)->toBe(ClickerStatus::Building)
+        ->and($clicker->fresh()->unlock_attempts)->toBe(2)
+        ->and($disk->get("clickers/{$clicker->id}/clicker.3mf"))->toBe('current');
+
+    (new BuildClickerFiles($clicker->id, 2))->handle(app(ClickerBuilder::class), app(ClickerService::class));
+
+    expect($fake->calls)->toBe(1)
+        ->and($clicker->fresh()->status)->toBe(ClickerStatus::Ready);
+
+    $other = ($this->make)();
+    $this->service->unlock($this->user, $other);
+    (new BuildClickerFiles($other->id))->handle(app(ClickerBuilder::class), app(ClickerService::class));
+
+    expect($fake->calls)->toBe(2)
+        ->and($other->fresh()->status)->toBe(ClickerStatus::Ready);
 });

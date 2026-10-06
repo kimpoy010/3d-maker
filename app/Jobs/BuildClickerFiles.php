@@ -41,6 +41,11 @@ class BuildClickerFiles implements ShouldQueue
             return;
         }
 
+        // A stale job from an earlier paid attempt must neither build nor delete anything.
+        if ($this->attempt !== null && $clicker->unlock_attempts !== $this->attempt) {
+            return;
+        }
+
         try {
             $paths = $builder->build($clicker);
         } catch (ClickerBuildException $e) {
