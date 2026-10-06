@@ -20,7 +20,7 @@
 - Money rules (match the rest of the app): conditional state changes (`WHERE status = ...`), the refund happens in the same transaction as the status change, idempotent via a unique ledger index, `lockForUpdate` is allowed before a charge but no plain SELECT, dispatch and file deletes only after commit, lock order is the clicker row and then the user row.
 - Files live on the private `local` disk under `clickers/{id}/`. File routes are owner-only and send `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`.
 - Tests must only run on in-memory SQLite (`tests/TestCase.php` refuses otherwise). Never run `php artisan config:cache` on a dev machine. Run Pint and Prettier only on files you changed, never on whole directories.
-- Do not name third-party brands in UI copy, prompts or file names.
+- Do not name third-party toy or figure brands in UI copy, prompts or file names. Naming slicer software (Creality Print, Bambu Studio, PrusaSlicer) in a compatibility hint is fine.
 - Style: PHP follows the existing code (Pint), Vue/TS follows Prettier (`printWidth` 150, 4 spaces, single quotes). Commit after each task.
 
 ## File Structure
@@ -3759,7 +3759,7 @@ Add this method at the end of the class:
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `vendor/bin/pest tests/Feature/NodeClickerBuilderTest.php tests/Feature/BuildClickerFilesTest.php tests/Feature/SweepStaleClickersTest.php`
-Expected: PASS, 11 tests (the real-Node test is skipped, not failed, if Node is missing). Then run the full suite: `vendor/bin/pest`; the existing sweeper tests must still pass.
+Expected: PASS, 12 tests (the real-Node test is skipped, not failed, if Node is missing). Then run the full suite: `vendor/bin/pest`; the existing sweeper tests must still pass.
 
 - [ ] **Step 7: Format and commit**
 
