@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Services\Clickers\ClickerBuilder;
+use App\Services\Clickers\NodeClickerBuilder;
 use App\Services\ModelProviders\MeshyProvider;
 use App\Services\ModelProviders\MockProvider;
 use App\Services\ModelProviders\ModelProvider;
@@ -42,6 +44,8 @@ class CreatorServiceProvider extends ServiceProvider
                 default => throw new InvalidArgumentException("Unknown stylizer provider [{$name}]."),
             };
         });
+
+        $this->app->bind(ClickerBuilder::class, NodeClickerBuilder::class);
     }
 
     /** Checked when the provider is resolved, not at boot, so artisan deploy commands still run. */
@@ -55,6 +59,9 @@ class CreatorServiceProvider extends ServiceProvider
     public function boot(): void
     {
         RateLimiter::for('generate', fn (Request $request) => Limit::perMinute(10)
+            ->by($request->user()?->id ?: $request->ip()));
+
+        RateLimiter::for('clicker', fn (Request $request) => Limit::perMinute(30)
             ->by($request->user()?->id ?: $request->ip()));
     }
 }
