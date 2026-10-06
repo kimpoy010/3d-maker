@@ -7,7 +7,8 @@
         "dev": "vite",
         "format": "prettier --write resources/",
         "format:check": "prettier --check resources/",
-        "lint": "eslint . --fix"
+        "lint": "eslint . --fix",
+        "test:clicker": "node --test \"resources/clicker/tests/*.test.js\""
     },
     "devDependencies": {
         "@eslint/js": "^9.19.0",
@@ -33,9 +34,12 @@
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "concurrently": "^9.0.1",
+        "earcut": "^3.2.4",
+        "fflate": "^0.8.3",
         "laravel-vite-plugin": "^1.0",
         "lucide": "^0.468.0",
         "lucide-vue-next": "^0.468.0",
+        "pngjs": "^7.0.0",
         "radix-vue": "^1.9.11",
         "tailwind-merge": "^2.5.5",
         "tailwindcss": "^3.4.1",

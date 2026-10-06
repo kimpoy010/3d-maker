@@ -15,5 +15,9 @@ export default defineConfigWithVueTs(
             '@typescript-eslint/no-explicit-any': 'off',
         },
     },
+    {
+        files: ['resources/clicker/**/*.{js,mjs}'],
+        languageOptions: { globals: { process: 'readonly', console: 'readonly' } },
+    },
     prettier,
 );
