@@ -78,3 +78,21 @@ function truncatedPngBytes(int $width = 64, int $height = 96): string
 
     return substr($png, 0, intdiv(strlen($png), 2));
 }
+
+/** A real PNG. When $transparent, the top-left quarter is fully transparent and the rest is opaque red. */
+function fakePngBytes(int $width = 400, int $height = 400, bool $transparent = true): string
+{
+    $image = imagecreatetruecolor($width, $height);
+    imagealphablending($image, false);
+    imagesavealpha($image, true);
+    imagefill($image, 0, 0, imagecolorallocatealpha($image, 220, 38, 38, 0));
+
+    if ($transparent) {
+        imagefilledrectangle($image, 0, 0, intdiv($width, 2) - 1, intdiv($height, 2) - 1, imagecolorallocatealpha($image, 0, 0, 0, 127));
+    }
+
+    ob_start();
+    imagepng($image);
+
+    return (string) ob_get_clean();
+}
