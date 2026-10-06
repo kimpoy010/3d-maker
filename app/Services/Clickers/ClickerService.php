@@ -58,7 +58,8 @@ class ClickerService
      */
     public function update(Clicker $clicker, ClickerBody $body, string $name, array $settings, ?string $artworkPng, ?string $thumbnailJpeg): Clicker
     {
-        DB::transaction(function () use ($clicker, $body, $name, $settings) {
+        // The file writes happen inside the lock, after the state check, so an unlock cannot slip in between.
+        DB::transaction(function () use ($clicker, $body, $name, $settings, $artworkPng, $thumbnailJpeg) {
             $locked = Clicker::whereKey($clicker->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->isUnlocked() || $locked->status === ClickerStatus::Building) {
@@ -66,9 +67,8 @@ class ClickerService
             }
 
             $locked->update(['clicker_body_id' => $body->id, 'name' => $name, 'settings' => $settings]);
+            $this->storeFiles($locked, $artworkPng, $thumbnailJpeg);
         });
-
-        $this->storeFiles($clicker, $artworkPng, $thumbnailJpeg);
 
         return $clicker->fresh();
     }
@@ -153,17 +153,18 @@ class ClickerService
         });
 
         if ($dispatch) {
-            BuildClickerFiles::dispatch($result->id);
+            BuildClickerFiles::dispatch($result->id, $result->unlock_attempts)->afterCommit();
         }
 
         return $result;
     }
 
     /** Building to ready. Returns false when the design is no longer building. */
-    public function markReady(int $clickerId, string $threemfPath, string $stlZipPath): bool
+    public function markReady(int $clickerId, string $threemfPath, string $stlZipPath, ?int $attempt = null): bool
     {
         return Clicker::whereKey($clickerId)
             ->where('status', ClickerStatus::Building->value)
+            ->when($attempt !== null, fn ($query) => $query->where('unlock_attempts', $attempt))
             ->update([
                 'status' => ClickerStatus::Ready->value,
                 'threemf_path' => $threemfPath,
@@ -177,12 +178,12 @@ class ClickerService
      * Building to failed, refunding the latest attempt in the same transaction, and clearing the unlock so
      * the user can pay for a new attempt. Returns false when the design is no longer building.
      */
-    public function markFailed(int $clickerId, string $message): bool
+    public function markFailed(int $clickerId, string $message, ?int $attempt = null): bool
     {
-        return DB::transaction(function () use ($clickerId, $message) {
+        return DB::transaction(function () use ($clickerId, $message, $attempt) {
             $clicker = Clicker::whereKey($clickerId)->lockForUpdate()->first();
 
-            if (! $clicker || $clicker->status !== ClickerStatus::Building) {
+            if (! $clicker || $clicker->status !== ClickerStatus::Building || ($attempt !== null && $clicker->unlock_attempts !== $attempt)) {
                 return false;
             }
 
@@ -199,8 +200,21 @@ class ClickerService
 
     public function destroy(Clicker $clicker): void
     {
+        DB::transaction(function () use ($clicker) {
+            $locked = Clicker::whereKey($clicker->id)->lockForUpdate()->first();
+
+            if (! $locked) {
+                return;
+            }
+
+            if ($locked->status === ClickerStatus::Building) {
+                throw new ClickerStateException('This design is being built and cannot be deleted yet.');
+            }
+
+            $locked->delete();
+        });
+
         Storage::disk('local')->deleteDirectory($clicker->directory());
-        $clicker->delete();
     }
 
     /** Lock the user row so two parallel saves cannot both slip under the limit. */

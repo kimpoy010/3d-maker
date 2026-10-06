@@ -25,12 +25,12 @@ class BuildClickerFiles implements ShouldQueue
 
     public int $tries = 1;
 
-    public function __construct(public int $clickerId) {}
+    public function __construct(public int $clickerId, public ?int $attempt = null) {}
 
     /** @return list<object> */
     public function middleware(): array
     {
-        return [(new WithoutOverlapping($this->clickerId))->dontRelease()->expireAfter(200)];
+        return [(new WithoutOverlapping($this->clickerId.':'.($this->attempt ?? 0)))->dontRelease()->expireAfter(200)];
     }
 
     public function handle(ClickerBuilder $builder, ClickerService $clickers): void
@@ -44,13 +44,13 @@ class BuildClickerFiles implements ShouldQueue
         try {
             $paths = $builder->build($clicker);
         } catch (ClickerBuildException $e) {
-            $clickers->markFailed($this->clickerId, $e->getMessage());
+            $clickers->markFailed($this->clickerId, $e->getMessage(), $this->attempt);
 
             return;
         }
 
         // If the design stopped building meanwhile (for example the sweeper failed it), drop the outputs.
-        if (! $clickers->markReady($this->clickerId, $paths['threemf'], $paths['stl_zip'])) {
+        if (! $clickers->markReady($this->clickerId, $paths['threemf'], $paths['stl_zip'], $this->attempt)) {
             Storage::disk('local')->delete([$paths['threemf'], $paths['stl_zip']]);
         }
     }
@@ -58,6 +58,6 @@ class BuildClickerFiles implements ShouldQueue
     /** Called by the queue when the job crashes or times out. */
     public function failed(?Throwable $exception): void
     {
-        app(ClickerService::class)->markFailed($this->clickerId, 'We could not build your files.');
+        app(ClickerService::class)->markFailed($this->clickerId, 'We could not build your files.', $this->attempt);
     }
 }

@@ -187,3 +187,63 @@ it('deletes a design with its files', function () {
     expect(Clicker::count())->toBe(0);
     Storage::disk('local')->assertMissing($path);
 });
+
+it('refuses to delete a design that is being built, and still deletes a draft', function () {
+    $building = ($this->make)();
+    $this->service->unlock($this->user, $building);
+
+    expect(fn () => $this->service->destroy($building->fresh()))->toThrow(ClickerStateException::class, 'being built');
+    expect(Clicker::find($building->id))->not->toBeNull()
+        ->and(CreditLedgerEntry::where('clicker_id', $building->id)->count())->toBe(1);
+    Storage::disk('local')->assertExists($building->artwork_path);
+
+    $draft = ($this->make)();
+    $this->service->destroy($draft);
+    expect(Clicker::find($draft->id))->toBeNull();
+    Storage::disk('local')->assertMissing($draft->artwork_path);
+});
+
+it('does not overwrite artwork when the design was unlocked after the caller loaded it', function () {
+    $clicker = ($this->make)();
+    $stale = Clicker::find($clicker->id);
+    $original = Storage::disk('local')->get($clicker->artwork_path);
+    $this->service->unlock($this->user, $clicker);
+
+    expect(fn () => $this->service->update($stale, $this->body, 'Sneaky', $this->settings, fakePngBytes(300, 300, false), null))
+        ->toThrow(ClickerStateException::class);
+
+    expect(Storage::disk('local')->get($clicker->artwork_path))->toBe($original)
+        ->and($clicker->fresh()->name)->toBe('Skull');
+});
+
+it('ignores a stale attempt number when marking ready or failed', function () {
+    $clicker = ($this->make)();
+    $this->service->unlock($this->user, $clicker);
+    $this->service->markFailed($clicker->id, 'first failed', 1);
+    $this->service->unlock($this->user, $clicker->fresh());
+
+    expect($this->service->markFailed($clicker->id, 'stale', 1))->toBeFalse()
+        ->and($this->service->markReady($clicker->id, 'a', 'b', 1))->toBeFalse()
+        ->and($clicker->fresh()->status)->toBe(ClickerStatus::Building)
+        ->and($this->credits->balance($this->user))->toBe(70);
+
+    expect($this->service->markReady($clicker->id, 'a', 'b', 2))->toBeTrue()
+        ->and($clicker->fresh()->status)->toBe(ClickerStatus::Ready);
+
+    $other = ($this->make)();
+    $this->service->unlock($this->user, $other);
+    expect($this->service->markFailed($other->id, 'current', 1))->toBeTrue()
+        ->and($this->credits->balance($this->user))->toBe(70);
+});
+
+it('dispatches the build for the paid attempt and keys the overlap lock per attempt', function () {
+    $clicker = ($this->make)();
+    $this->service->unlock($this->user, $clicker);
+
+    Queue::assertPushed(BuildClickerFiles::class, fn ($job) => $job->clickerId === $clicker->id && $job->attempt === 1);
+
+    $one = new BuildClickerFiles(7, 1);
+    $two = new BuildClickerFiles(7, 2);
+    expect($one->middleware()[0]->key)->not->toBe($two->middleware()[0]->key)
+        ->and((new BuildClickerFiles(7))->middleware()[0]->key)->toBe('7:0');
+});
