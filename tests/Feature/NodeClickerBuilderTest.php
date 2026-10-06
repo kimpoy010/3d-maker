@@ -29,11 +29,11 @@ it('runs the node script on a job folder and moves the outputs into place', func
     $paths = $this->builder->build($this->clicker->load('body'));
 
     expect($paths)->toBe([
-        'threemf' => "clickers/{$this->clicker->id}/clicker.3mf",
-        'stl_zip' => "clickers/{$this->clicker->id}/clicker-stl.zip",
+        'threemf' => "clickers/{$this->clicker->id}/clicker-1.3mf",
+        'stl_zip' => "clickers/{$this->clicker->id}/clicker-stl-1.zip",
     ]);
     Storage::disk('local')->assertExists(array_values($paths));
-    Storage::disk('local')->assertMissing("clickers/{$this->clicker->id}/job");
+    Storage::disk('local')->assertMissing("clickers/{$this->clicker->id}/job-1");
     Process::assertRan(fn ($process) => $process->command[0] === 'node'
         && in_array('--max-old-space-size=768', $process->command, true)
         && str_ends_with($process->command[2], 'build.mjs'));
@@ -51,13 +51,48 @@ it('turns a failing script into a customer-safe error and cleans up', function (
 
     expect(fn () => $this->builder->build($this->clicker->load('body')))
         ->toThrow(ClickerBuildException::class, NodeClickerBuilder::MESSAGE);
-    Storage::disk('local')->assertMissing("clickers/{$this->clicker->id}/job");
+    Storage::disk('local')->assertMissing("clickers/{$this->clicker->id}/job-1");
 });
 
 it('fails when the script reports success but writes no files', function () {
     Process::fake(['*' => Process::result()]);
 
     expect(fn () => $this->builder->build($this->clicker->load('body')))->toThrow(ClickerBuildException::class);
+});
+
+it('gives every attempt its own folder and file names so overlapping builds do not clobber each other', function () {
+    Process::fake(function ($process) {
+        $folder = end($process->command);
+        file_put_contents("{$folder}/clicker.3mf", basename($folder));
+        file_put_contents("{$folder}/clicker-stl.zip", basename($folder));
+
+        return Process::result();
+    });
+    $disk = Storage::disk('local');
+    $dir = "clickers/{$this->clicker->id}";
+
+    $this->clicker->update(['unlock_attempts' => 1]);
+    $one = $this->builder->build($this->clicker->fresh()->load('body'));
+    $this->clicker->update(['unlock_attempts' => 2]);
+    $two = $this->builder->build($this->clicker->fresh()->load('body'));
+
+    expect($one['threemf'])->toBe("{$dir}/clicker-1.3mf")
+        ->and($two['threemf'])->toBe("{$dir}/clicker-2.3mf")
+        ->and($two['stl_zip'])->toBe("{$dir}/clicker-stl-2.zip")
+        ->and($disk->get($one['threemf']))->toBe('job-1')
+        ->and($disk->get($two['threemf']))->toBe('job-2');
+});
+
+it('moves nothing when only one output was written', function () {
+    Process::fake(function ($process) {
+        file_put_contents(end($process->command).'/clicker.3mf', '3mf');
+
+        return Process::result();
+    });
+
+    expect(fn () => $this->builder->build($this->clicker->load('body')))->toThrow(ClickerBuildException::class);
+    Storage::disk('local')->assertMissing("clickers/{$this->clicker->id}/clicker-1.3mf");
+    Storage::disk('local')->assertMissing("clickers/{$this->clicker->id}/job-1");
 });
 
 it('refuses a body file outside the bodies folder', function () {

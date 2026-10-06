@@ -20,7 +20,10 @@ class NodeClickerBuilder implements ClickerBuilder
     {
         $disk = Storage::disk('local');
         $directory = $clicker->directory();
-        $job = "{$directory}/job";
+        // Each paid attempt has its own folder and file names, so a stale job only ever touches its own files.
+        $attempt = max(1, (int) $clicker->unlock_attempts);
+        $job = "{$directory}/job-{$attempt}";
+        $outputs = ['threemf' => ['clicker.3mf', "clicker-{$attempt}.3mf"], 'stl_zip' => ['clicker-stl.zip', "clicker-stl-{$attempt}.zip"]];
 
         $disk->deleteDirectory($job);
         $disk->makeDirectory($job);
@@ -29,17 +32,20 @@ class NodeClickerBuilder implements ClickerBuilder
             $this->prepare($clicker, $job);
             $this->run($clicker, $disk->path($job));
 
-            $paths = [];
-            foreach (['threemf' => 'clicker.3mf', 'stl_zip' => 'clicker-stl.zip'] as $key => $file) {
-                if (! $disk->exists("{$job}/{$file}")) {
-                    Log::error('The clicker build wrote no output file.', ['clicker_id' => $clicker->id, 'missing' => $file]);
+            // Both outputs must exist before either is moved.
+            foreach ($outputs as [$written]) {
+                if (! $disk->exists("{$job}/{$written}")) {
+                    Log::error('The clicker build wrote no output file.', ['clicker_id' => $clicker->id, 'missing' => $written]);
 
                     throw new ClickerBuildException(self::MESSAGE);
                 }
+            }
 
-                $disk->delete("{$directory}/{$file}");
-                $disk->move("{$job}/{$file}", "{$directory}/{$file}");
-                $paths[$key] = "{$directory}/{$file}";
+            $paths = [];
+            foreach ($outputs as $key => [$written, $final]) {
+                $disk->delete("{$directory}/{$final}");
+                $disk->move("{$job}/{$written}", "{$directory}/{$final}");
+                $paths[$key] = "{$directory}/{$final}";
             }
 
             return $paths;

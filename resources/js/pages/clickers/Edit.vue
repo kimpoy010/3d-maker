@@ -7,7 +7,7 @@ import { loadArtwork, loadArtworkFromUrl } from '@/lib/artwork';
 import { analyze, bodyProxy, extrude, paletteFor, type Analysis, type BodyConfig, type ClickerSettings, type Part, type Pixels } from '@/lib/clicker';
 import { peso } from '@/lib/money';
 import type { BreadcrumbItem } from '@/types';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 
 type Body = { id: number; name: string; description: string | null; preview: string | null; config: BodyConfig };
@@ -150,7 +150,8 @@ const snapshotKey = () => JSON.stringify([name.value, bodyId.value, settings.val
 const savedKey = ref(snapshotKey());
 const dirty = computed(() => artworkBlob.value !== null || snapshotKey() !== savedKey.value);
 const saveForm = useForm<Record<string, unknown>>({});
-const errors = computed(() => Object.values(saveForm.errors).filter(Boolean) as string[]);
+const actionForm = useForm<Record<string, unknown>>({}); // duplicate and delete: their errors land on `name`
+const errors = computed(() => [...new Set([...Object.values(saveForm.errors), ...Object.values(actionForm.errors)].filter(Boolean))] as string[]);
 const canSave = computed(
     () =>
         editable.value &&
@@ -233,16 +234,23 @@ function unlock() {
 
 function duplicate() {
     if (props.clicker && !duplicating.value) {
-        router.post(
-            `/clickers/${props.clicker.id}/duplicate`,
-            {},
-            { onStart: () => (duplicating.value = true), onFinish: () => (duplicating.value = false) },
-        );
+        actionForm.clearErrors();
+        actionForm.post(`/clickers/${props.clicker.id}/duplicate`, {
+            onStart: () => (duplicating.value = true),
+            onFinish: () => (duplicating.value = false),
+        });
     }
 }
 
 function remove() {
-    if (props.clicker && window.confirm('Delete this design and its files?')) router.delete(`/clickers/${props.clicker.id}`);
+    if (!props.clicker) return;
+    const message = props.clicker.unlocked
+        ? 'Delete this design and its files? The unlock you paid for is not refunded.'
+        : 'Delete this design and its files?';
+    if (window.confirm(message)) {
+        actionForm.clearErrors();
+        actionForm.delete(`/clickers/${props.clicker.id}`);
+    }
 }
 
 const polling = usePolling({ only: ['clicker', 'balance'], active: () => props.clicker?.status === 'building' });
@@ -257,7 +265,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
     <Head :title="clicker ? clicker.name : 'New clicker'" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div v-if="bodies.length === 0" class="mx-auto w-full max-w-xl p-6 text-center text-sm text-muted-foreground">
+        <div v-if="bodies.length === 0 && !clicker" class="mx-auto w-full max-w-xl p-6 text-center text-sm text-muted-foreground">
             No clicker bodies are available yet. Please check back soon.
         </div>
 
@@ -348,7 +356,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                         v-model.number="c.height_mm"
                                         type="number"
                                         min="0.1"
-                                        :max="body.config.max_layer_height"
+                                        :max="body?.config.max_layer_height"
                                         step="0.1"
                                         class="w-16 rounded-md border bg-background px-2 py-1"
                                     />

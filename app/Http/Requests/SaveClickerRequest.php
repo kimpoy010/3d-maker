@@ -19,7 +19,7 @@ class SaveClickerRequest extends FormRequest
     public function rules(): array
     {
         $creating = $this->route('clicker') === null;
-        $hex = ['required', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'];
+        $hex = ['required', 'string', 'regex:/^#[0-9A-Fa-f]{6}\z/'];
 
         return [
             'name' => ['required', 'string', 'max:60'],

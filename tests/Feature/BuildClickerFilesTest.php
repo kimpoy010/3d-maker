@@ -50,6 +50,30 @@ it('stores the files and marks the design ready', function () {
         ->and($this->credits->balance($this->user))->toBe(70);
 });
 
+it('drops only its own outputs when the design stopped building meanwhile', function () {
+    $dir = $this->clicker->directory();
+    Storage::disk('local')->put("{$dir}/clicker-2.3mf", 'newer');
+    $id = $this->clicker->id;
+    app()->bind(ClickerBuilder::class, fn () => new class($id) implements ClickerBuilder
+    {
+        public function __construct(private int $id) {}
+
+        public function build(Clicker $clicker): array
+        {
+            Storage::disk('local')->put("{$clicker->directory()}/clicker-1.3mf", '3mf');
+            Storage::disk('local')->put("{$clicker->directory()}/clicker-stl-1.zip", 'zip');
+            Clicker::whereKey($this->id)->update(['status' => ClickerStatus::Failed->value]);
+
+            return ['threemf' => "{$clicker->directory()}/clicker-1.3mf", 'stl_zip' => "{$clicker->directory()}/clicker-stl-1.zip"];
+        }
+    });
+
+    ($this->run)();
+
+    Storage::disk('local')->assertMissing(["{$dir}/clicker-1.3mf", "{$dir}/clicker-stl-1.zip"]);
+    Storage::disk('local')->assertExists("{$dir}/clicker-2.3mf");
+});
+
 it('fails the design and refunds when the build fails', function () {
     app()->bind(ClickerBuilder::class, fn () => new class implements ClickerBuilder
     {

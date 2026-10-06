@@ -23,6 +23,7 @@ class Clicker extends Model
         return [
             'status' => ClickerStatus::class,
             'settings' => 'array',
+            'unlock_attempts' => 'integer',
             'downloads_unlocked_at' => 'datetime',
             'build_started_at' => 'datetime',
         ];

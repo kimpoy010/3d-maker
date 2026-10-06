@@ -19,6 +19,7 @@ class ClickerFileController extends Controller
             'thumbnail' => $clicker->thumbnail_path,
             '3mf' => $clicker->threemf_path,
             'stl' => $clicker->stl_zip_path,
+            default => abort(404),
         };
 
         // The two print files are the paid download.

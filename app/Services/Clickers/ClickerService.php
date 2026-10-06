@@ -162,7 +162,7 @@ class ClickerService
     /** Building to ready. Returns false when the design is no longer building. */
     public function markReady(int $clickerId, string $threemfPath, string $stlZipPath, ?int $attempt = null): bool
     {
-        return Clicker::whereKey($clickerId)
+        $ready = Clicker::whereKey($clickerId)
             ->where('status', ClickerStatus::Building->value)
             ->when($attempt !== null, fn ($query) => $query->where('unlock_attempts', $attempt))
             ->update([
@@ -172,6 +172,25 @@ class ClickerService
                 'build_error' => null,
                 'updated_at' => now(),
             ]) === 1;
+
+        if ($ready) {
+            $this->deleteSupersededOutputs("clickers/{$clickerId}", [$threemfPath, $stlZipPath]);
+        }
+
+        return $ready;
+    }
+
+    /** Once an attempt is Ready, the outputs of earlier attempts (a failed build's leftovers) are dead weight. */
+    private function deleteSupersededOutputs(string $directory, array $keep): void
+    {
+        $disk = Storage::disk('local');
+
+        $old = array_filter(
+            $disk->files($directory),
+            fn (string $file) => ! in_array($file, $keep, true) && preg_match('/\/clicker(-stl)?(-\d+)?\.(3mf|zip)$/', $file) === 1,
+        );
+
+        $disk->delete(array_values($old));
     }
 
     /**

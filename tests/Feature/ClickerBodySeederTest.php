@@ -20,6 +20,23 @@ it('seeds the development body once, with a complete config and a real model fil
     }
 });
 
+it('never reactivates the placeholder body on a re-seed', function () {
+    $this->seed(ClickerBodySeeder::class);
+    ClickerBody::where('slug', 'placeholder-slab')->update(['active' => false]);
+
+    $this->seed(ClickerBodySeeder::class);
+
+    expect(ClickerBody::where('slug', 'placeholder-slab')->firstOrFail()->active)->toBeFalse();
+});
+
+it('does not create the placeholder body in production', function () {
+    $this->app['env'] = 'production';
+
+    (new ClickerBodySeeder)->run();
+
+    expect(ClickerBody::count())->toBe(0);
+});
+
 it('has sensible clicker limits in config', function () {
     expect(config('clicker.max_per_user'))->toBe(20)
         ->and(config('clicker.max_colors'))->toBe(8)

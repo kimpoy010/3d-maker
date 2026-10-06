@@ -123,6 +123,13 @@ The geometry lives in `resources/clicker/` as plain JavaScript. The editor impor
 
 **Adding a clicker body.** Bodies are model files you have printed and tested. Put the STL (or several) in `resources/clicker/bodies/<slug>/` and add an entry to `database/seeders/ClickerBodySeeder.php` with the cap size, the artwork area, the highest layer, the smallest printable detail and the switch it takes (see `ClickerBody::sampleConfig()` for every field and its unit). Run `php artisan db:seed --class=ClickerBodySeeder`. The development body `placeholder-slab` has no switch cavity: deactivate it (`active => false`) before launch.
 
+**Launch checklist.**
+
+- [ ] Node is installed on the queue-worker host, together with the build dependencies (`earcut`, `fflate` and `pngjs` are runtime `dependencies`, so `npm ci --omit=dev` is enough).
+- [ ] A real, print-tested clicker body is added (see above).
+- [ ] The placeholder body `placeholder-slab` is deactivated (`active = false`). The seeder never reactivates it and does not create it in production.
+- [ ] Click both download links (3MF and STL zip) of an unlocked design in a real browser and open the files in a slicer.
+
 **Tests.** `npm run test:clicker` runs the geometry suite (Node); `vendor/bin/pest` runs the rest. The Pest suite refuses to start unless it is on in-memory SQLite: run `php artisan config:clear` first and never run `php artisan config:cache` on a development machine.
 
 ## Tests

@@ -162,7 +162,10 @@ class ClickerController extends Controller
     {
         return [
             'clicker' => $clicker ? ClickerResource::make($clicker)->resolve() : null,
-            'bodies' => ClickerBody::active()->orderBy('id')->get()
+            // The design's own body is always included, even once retired, so the editor previews the right one.
+            'bodies' => ClickerBody::query()
+                ->where(fn ($query) => $query->where('active', true)->when($clicker, fn ($q) => $q->orWhere('id', $clicker->clicker_body_id)))
+                ->orderBy('id')->get()
                 ->map(fn (ClickerBody $b) => ClickerBodyResource::make($b)->resolve())->values(),
             'balance' => $credits->balance($request->user()),
             'unlock_cost' => (int) config('credits.clicker_cost'),

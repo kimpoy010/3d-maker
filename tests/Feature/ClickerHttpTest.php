@@ -74,6 +74,28 @@ it('shows the editor with the active bodies but never their model files', functi
         ->where('max_colors', 8));
 });
 
+it('still passes a design its own body after the body is retired', function () {
+    $clicker = ($this->saved)();
+    $other = ClickerBody::factory()->create(['active' => false]);
+    $this->body->update(['active' => false]);
+
+    $this->actingAs($this->user)->get("/clickers/{$clicker->id}")->assertInertia(fn (Assert $page) => $page
+        ->has('bodies', 1)
+        ->where('bodies.0.id', $this->body->id));
+
+    expect($other->active)->toBeFalse();
+});
+
+it('shows the duplicate limit error on the name field', function () {
+    $clicker = ($this->saved)();
+    ($this->saved)();
+    ($this->saved)();
+
+    $this->actingAs($this->user)->post("/clickers/{$clicker->id}/duplicate")
+        ->assertSessionHasErrors(['name' => 'You have reached the limit of 3 saved clickers. Delete one to make room.']);
+    expect(Clicker::count())->toBe(3);
+});
+
 it('saves a new design with typed settings and its files', function () {
     $this->actingAs($this->user)->post('/clickers', ($this->payload)([
         'settings' => array_replace($this->settings, ['scale' => '0.5', 'colors' => [

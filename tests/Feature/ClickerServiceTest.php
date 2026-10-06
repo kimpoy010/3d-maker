@@ -249,6 +249,24 @@ it('dispatches the build for the paid attempt and keys the overlap lock per atte
         ->and((new BuildClickerFiles(7))->middleware()[0]->key)->toBe('7:0');
 });
 
+it('deletes the previous attempt outputs when a new attempt becomes ready, and a stale ready only drops its own', function () {
+    $clicker = ($this->make)();
+    $this->service->unlock($this->user, $clicker);
+    $disk = Storage::disk('local');
+    $dir = "clickers/{$clicker->id}";
+    foreach (['clicker-1.3mf', 'clicker-stl-1.zip', 'clicker-2.3mf', 'clicker-stl-2.zip', 'artwork.png'] as $file) {
+        $disk->put("{$dir}/{$file}", 'x');
+    }
+
+    // The design failed on attempt 1 and was unlocked again as attempt 2.
+    $this->service->markFailed($clicker->id, 'failed', 1);
+    $this->service->unlock($this->user, $clicker->fresh());
+
+    expect($this->service->markReady($clicker->id, "{$dir}/clicker-2.3mf", "{$dir}/clicker-stl-2.zip", 2))->toBeTrue();
+    $disk->assertMissing(["{$dir}/clicker-1.3mf", "{$dir}/clicker-stl-1.zip"]);
+    $disk->assertExists(["{$dir}/clicker-2.3mf", "{$dir}/clicker-stl-2.zip", "{$dir}/artwork.png"]);
+});
+
 it('lets a stale attempt job neither build nor delete, while the current attempt and an unnumbered job build', function () {
     $fake = new class implements ClickerBuilder
     {
