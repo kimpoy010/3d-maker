@@ -1,6 +1,6 @@
 # Cherry MX keycap body and base shapes: design
 
-Status: approved by the owner in chat on 2026-10-07 ("go, use those defaults"). Extends `2026-10-06-clicker-maker-design.md`.
+Status: Implemented (approved by the owner in chat on 2026-10-07, "go, use those defaults"). Extends `2026-10-06-clicker-maker-design.md`.
 
 ## Why
 

@@ -18,7 +18,15 @@ it('seeds the Cherry MX keycap body once, active, with a generator config and no
         ->and($body->config['cap'])->toHaveKeys(['shape', 'width', 'height', 'corner_radius', 'top_z', 'inset'])
         ->and($body->config['artwork_area'])->toHaveKeys(['cx', 'cy', 'width', 'height'])
         ->and($body->config)->toHaveKeys(['max_layer_height', 'min_feature'])
-        ->and($body->config['switch'])->toBe('Cherry MX');
+        ->and($body->config['switch'])->toBe('Cherry MX')
+        ->and($body->config)->toEqual(ClickerBody::sampleConfig())
+        ->and($body->config['keycap']['rim'])->toBe(2)
+        ->and($body->config['keycap']['corner_radius'])->toBe(4)
+        ->and($body->config['keycap']['height'])->toBe(8)
+        ->and($body->config['keycap']['socket_depth'])->toBe(4.5)
+        ->and($body->config['keycap']['stem']['span'])->toBe(4.2)
+        ->and($body->config['keycap']['stem']['arm'])->toBe(1.35)
+        ->and($body->config['keycap']['stem']['wall'])->toBe(1.2);
 });
 
 it('does not seed the placeholder slab, which stays creatable through its factory', function () {

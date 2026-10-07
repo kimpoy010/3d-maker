@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('preview_image')->nullable();
             // Paths relative to the project root, inside resources/clicker/bodies/.
             $table->json('model_files');
-            // Cap, artwork area and print limits, all in millimetres. See ClickerBody::sampleConfig().
+            // Cap, artwork area and print limits, all in millimetres. For static bodies see ClickerBody::legacyConfig().
             $table->json('config');
             $table->boolean('active')->default(true);
             $table->timestamps();

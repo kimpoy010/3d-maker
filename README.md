@@ -121,14 +121,26 @@ The geometry lives in `resources/clicker/` as plain JavaScript. The editor impor
 | `CLICKER_NODE_BINARY` | `node` | The Node executable used by the build job. |
 | `CLICKER_BUILD_TIMEOUT` | `90` | Seconds before a build process is killed. |
 
-**Cherry MX keycap body.** The seeded body "Cherry MX keycap" is generated in code (`generator: mx_keycap`), so it has no model files. The user picks a Square, Circle or Trace base shape in the editor (saved as `settings.base_shape`, default `square`). The body config (`ClickerBody::sampleConfig()`) holds the sizes in millimetres; the cross-socket numbers are `keycap.stem` (`span`, `arm`, `wall`) and have not been tested on a printer. Print one cap upright, without supports, then adjust those three numbers in the body's `config` (and in `sampleConfig()` for new installs). Run `php artisan db:seed --class=ClickerBodySeeder` to create it; the seeder never reactivates a body you have deactivated.
+**Cherry MX keycap body.** The seeded body "Cherry MX keycap" is generated in code (`generator: mx_keycap`), so it has no model files. The old placeholder slab is no longer seeded. Run `php artisan db:seed --class=ClickerBodySeeder` to create the keycap; the seeder never reactivates a body you have deactivated.
+
+The user picks a base shape in the editor (saved as `settings.base_shape`, default `square`):
+
+- **Square**: a rounded square keycap outline.
+- **Circle**: a round outline.
+- **Trace**: follows the silhouette of the uploaded artwork. It needs transparent or clean artwork (a clear background); a busy or solid-background image gives a blocky outline. The outline offsets are ignored for Trace.
+
+All sizes are millimetres and live in the body config under `keycap` (defaults from `ClickerBody::sampleConfig()`): `size` 30, `rim` 2, `corner_radius` 4, `height` 8, `socket_depth` 4.5, and the cross-socket numbers `stem.span` 4.2, `stem.arm` 1.35, `stem.wall` 1.2. The stem numbers have not been tested on a real switch.
+
+Print the cap upright, without supports: the body is solid and the cross socket opens at the bottom. The body is two overlapping shells, which slicers merge when loading the file.
+
+Re-seeding does NOT overwrite an existing body, so to change the numbers edit the body's row (its `config` JSON) or add a new body. Also change `sampleConfig()` for new installs. The app is reached at the `php artisan serve` address (<http://127.0.0.1:8000>) with `npm run dev` running alongside.
 
 **Adding another clicker body.** Static bodies are model files you have printed and tested. Put the STL (or several) in `resources/clicker/bodies/<slug>/` and add an entry to `database/seeders/ClickerBodySeeder.php` with the cap size, the artwork area, the highest layer, the smallest printable detail and the switch it takes (see `ClickerBody::legacyConfig()` for every field and its unit).
 
 **Launch checklist.**
 
 - [ ] Node is installed on the queue-worker host, together with the build dependencies (`earcut`, `fflate` and `pngjs` are runtime `dependencies`, so `npm ci --omit=dev` is enough).
-- [ ] One Cherry MX keycap is printed and the `keycap.stem` numbers are adjusted if the switch fit is wrong.
+- [ ] Print one test cap on a real Cherry MX switch and adjust `keycap.stem` in the body config (the existing row is not overwritten by re-seeding; edit it or add a new body).
 - [ ] The old development body `placeholder-slab`, if it exists in the database, is deactivated (`active = false`). The seeder no longer creates it.
 - [ ] Click both download links (3MF and STL zip) of an unlocked design in a real browser and open the files in a slicer.
 
