@@ -1,7 +1,7 @@
 import { hexToRgb } from './color.js';
 import { buildKeycapBody, circleOutline, keycapConfig, squareOutline, stemClearance } from './keycap.js';
 import { extrudePolygons, toMm } from './mesh.js';
-import { BG, applyCapMask, buildLabels, cleanSpecks, downscale, paintOutline, thinResidue } from './raster.js';
+import { BG, applyCapMask, buildLabels, cleanSpecks, downscale, paintOutline, removeBackground, thinResidue } from './raster.js';
 import { traceOutline } from './trace-outline.js';
 import { traceLabel } from './trace.js';
 
@@ -50,6 +50,11 @@ function subsample(labels, width, height, factor) {
     return { labels: out, width: w, height: h };
 }
 
+/** The artwork as the pipeline sees it: a plain background made transparent unless `remove_background` is false. */
+export function prepareArtwork(image, settings) {
+    return settings?.remove_background !== false ? removeBackground(image) : image;
+}
+
 /**
  * The slow half of the pipeline: pixels in, millimetre polygons out. Re-run it when the artwork,
  * the palette, the scale, the position or the outline change.
@@ -61,7 +66,8 @@ function subsample(labels, width, height, factor) {
  * @param {'preview'|'final'} quality
  * @returns analysis; for generated bodies `cap` = {outline, stem} and `blockers` lists reasons the cap cannot be built
  */
-export function analyzeArtwork(image, settings, body, quality = 'preview') {
+export function analyzeArtwork(source, settings, body, quality = 'preview') {
+    const image = prepareArtwork(source, settings);
     const generated = isGenerated(body);
     const keycap = generated ? keycapConfig(body) : null;
     const shape = generated ? baseShape(settings) : null;

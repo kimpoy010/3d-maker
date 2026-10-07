@@ -49,6 +49,76 @@ export function downscale(image, maxSide) {
 }
 
 /**
+ * Make a plain background transparent: flood fill from the border pixels that match the dominant border
+ * colour. Does nothing for images that already have transparency or whose border is not a plain colour.
+ * Returns a new image; the input is never mutated.
+ */
+export function removeBackground(image, tolerance = 48) {
+    const { data, width, height } = image;
+    const out = { data: Uint8ClampedArray.from(data), width, height };
+    const n = width * height;
+
+    let clear = 0;
+    for (let i = 0; i < n; i++) if (data[i * 4 + 3] < 128) clear++;
+    if (clear > n * 0.02) return out;
+
+    const border = [];
+    for (let x = 0; x < width; x++) {
+        border.push(x);
+        if (height > 1) border.push((height - 1) * width + x);
+    }
+    for (let y = 1; y < height - 1; y++) {
+        border.push(y * width);
+        if (width > 1) border.push(y * width + width - 1);
+    }
+
+    const median = (channel) => {
+        const values = border.map((p) => data[p * 4 + channel]).sort((a, b) => a - b);
+
+        return values[Math.floor(values.length / 2)];
+    };
+    const bg = [median(0), median(1), median(2)];
+    const limit = tolerance * tolerance;
+    const matches = (p) => {
+        const o = p * 4;
+        const dr = data[o] - bg[0];
+        const dg = data[o + 1] - bg[1];
+        const db = data[o + 2] - bg[2];
+
+        return dr * dr + dg * dg + db * db <= limit;
+    };
+
+    if (border.filter(matches).length < border.length * 0.85) return out;
+
+    const seen = new Uint8Array(n);
+    const stack = [];
+    for (const p of border) {
+        if (!seen[p] && matches(p)) {
+            seen[p] = 1;
+            stack.push(p);
+        }
+    }
+    while (stack.length) {
+        const p = stack.pop();
+        out.data[p * 4 + 3] = 0;
+        const x = p % width;
+        const around = [];
+        if (x > 0) around.push(p - 1);
+        if (x < width - 1) around.push(p + 1);
+        if (p >= width) around.push(p - width);
+        if (p < n - width) around.push(p + width);
+        for (const q of around) {
+            if (!seen[q] && matches(q)) {
+                seen[q] = 1;
+                stack.push(q);
+            }
+        }
+    }
+
+    return out;
+}
+
+/**
  * Snap every pixel to the nearest palette colour. Transparent pixels, and pixels whose nearest colour
  * is disabled, become BG. `palette` is a list of {rgb: [r, g, b], enabled: boolean}.
  */
