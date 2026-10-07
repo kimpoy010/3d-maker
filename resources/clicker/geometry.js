@@ -16,7 +16,9 @@ import { BG, applyCapMask, buildLabels, cleanSpecks, downscale, paintOutline, re
 import { traceOutline } from './trace-outline.js';
 import { traceLabel } from './trace.js';
 
-export { suggestPalette } from './palette.js';
+import { suggestPalette } from './palette.js';
+
+export { suggestPalette };
 
 /** Longest side of the working pixel grid. */
 export const MAX_SIDE = { preview: 1024, final: 2048 };
@@ -25,6 +27,8 @@ export const BASE_SHAPES = ['square', 'circle', 'trace'];
 
 export const STEM_BLOCKER = 'This shape is too thin to hold the switch stem. Make the artwork larger or choose Square or Circle.';
 
+export const NO_BACKGROUND_NOTE =
+    'The background could not be removed, so Trace follows the whole image. Try a plainer background or use Square or Circle.';
 export const HOLLOW_NOTE = 'The shape is too small for a hollow cap, so the cap is solid.';
 export const HOLLOW_FAILED_NOTE = 'The hollow cap could not be built for this shape, so the cap is solid.';
 
@@ -78,6 +82,26 @@ export function prepareArtwork(image, settings, body) {
     const on = isGenerated(body) ? settings?.remove_background !== false : settings?.remove_background === true;
 
     return on ? removeBackground(image) : image;
+}
+
+/** How many pixels are transparent (alpha below 128). */
+function clearCount(image) {
+    let n = 0;
+    for (let i = 3; i < image.data.length; i += 4) if (image.data[i] < 128) n++;
+
+    return n;
+}
+
+/**
+ * Suggest `count` colours from the prepared artwork. When a background was removed, the anti-aliased pixels
+ * along the new edge are blends with that background, so they are left out of the suggestion (not out of the
+ * label snapping). The editor and the tests share this one path.
+ */
+export function paletteFromArtwork(image, count, settings, body) {
+    const prepared = prepareArtwork(image, settings, body);
+    const removed = prepared !== image && clearCount(prepared) > clearCount(image);
+
+    return suggestPalette(prepared, count, { ignoreEdge: removed });
 }
 
 /**
@@ -169,6 +193,13 @@ export function analyzeArtwork(source, settings, body, quality = 'preview') {
     const blockers = [];
     let traced = null;
     if (generated && shape === 'trace') {
+        if (
+            settings.remove_background !== false &&
+            clearCount(source) < source.width * source.height * 0.02 &&
+            clearCount(image) === clearCount(source)
+        ) {
+            notes.push(NO_BACKGROUND_NOTE);
+        }
         traced = traceOutline({ image: scaled, frame, keycap });
         keycapShape = { outline: traced.outline, stem: traced.stem };
         notes.push(...traced.notes);
@@ -184,8 +215,9 @@ export function analyzeArtwork(source, settings, body, quality = 'preview') {
     }
     if (generated && settings.hollow_cap === true) {
         keycapShape.cavity = hollowCavity({ shape, ...keycapShape, keycap, trace: traced });
-        if (keycapShape.cavity.length === 0) notes.push(HOLLOW_NOTE);
-        else if (blockers.length === 0) prepareHollowCap(keycapShape, keycap, notes);
+        if (keycapShape.cavity.length === 0) {
+            if (blockers.length === 0) notes.push(HOLLOW_NOTE);
+        } else if (blockers.length === 0) prepareHollowCap(keycapShape, keycap, notes);
     }
     if (generated && blockers.length === 0) prepareBase(keycapShape, keycap, blockers);
 

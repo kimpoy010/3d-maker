@@ -131,7 +131,7 @@ The user picks a base shape in the editor (saved as `settings.base_shape`, defau
 
 All sizes are millimetres and live in the body config under `keycap` (defaults from `ClickerBody::sampleConfig()`): `size` 30, `rim` 2, `corner_radius` 4, `height` 8, `socket_depth` 4.5, and the cross-socket numbers `stem.span` 4.2, `stem.arm` 1.35, `stem.wall` 1.2. The stem numbers have not been tested on a real switch.
 
-**Two printed pieces.** Every build produces a **Cap** (the colour parts plus the body, one closed solid with the cross socket open at the bottom) and a **Base** (the housing that holds the Cherry MX switch). The 3MF has the colour parts and the `Cap` and `Base` objects. The STL zip has one file per piece: `NN-colour-<hex>.stl` for each colour, `NN-cap.stl` and `NN-base.stl` (NN is the running number).
+**Two printed pieces.** Every build produces a **Cap** (the colour parts plus the body, one closed solid with the cross socket open at the bottom) and a **Base** (the housing that holds the Cherry MX switch). The 3MF has the colour parts, the outline part when an outline is set, and the `Cap` and `Base` objects. The STL zip has one file per piece: `NN-colour-<hex>.stl` for each colour, `NN-cap.stl` and `NN-base.stl` (NN is the running number).
 
 How each piece prints:
 

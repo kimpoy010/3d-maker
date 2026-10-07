@@ -1,4 +1,4 @@
-import { analyzeArtwork, bodyProxyPart, buildParts, prepareArtwork, suggestPalette } from '@clicker/geometry.js';
+import { analyzeArtwork, bodyProxyPart, buildParts, paletteFromArtwork, prepareArtwork } from '@clicker/geometry.js';
 
 /** Typed access to the shared clicker geometry module (plain JavaScript, also run by the server build). */
 
@@ -50,4 +50,4 @@ export const prepared = (image: Pixels, settings: ClickerSettings, body: BodyCon
 
 /** Suggest colours from the prepared artwork, so a removed background does not take a colour slot. */
 export const paletteFor = (image: Pixels, count: number, settings: ClickerSettings, body: BodyConfig): string[] =>
-    suggestPalette(prepared(image, settings, body), count) as string[];
+    paletteFromArtwork(image, count, settings, body) as string[];

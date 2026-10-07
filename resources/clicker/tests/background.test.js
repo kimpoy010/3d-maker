@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { analyzeArtwork, prepareArtwork, suggestPalette } from '../geometry.js';
+import { NO_BACKGROUND_NOTE, analyzeArtwork, paletteFromArtwork, prepareArtwork, suggestPalette } from '../geometry.js';
 import { removeBackground } from '../raster.js';
 import { BODY, KEYCAP_BODY, SETTINGS, makeImage } from './helpers.js';
 
@@ -184,6 +184,67 @@ test('a mid-grey ring beyond the tolerance is kept, and too many such border pix
         y === 0 || y === SIZE - 1 ? WHITE : x === 0 ? [128, 128, 128] : x === SIZE - 1 ? [30, 30, 30] : BLUE,
     );
     assert.deepEqual(Array.from(removeBackground(split).data), Array.from(split.data));
+});
+
+/** White background, blue disc, teal ring, 4x4 supersampled anti-aliased edges. */
+const aaLogo = () =>
+    makeImage(SIZE, SIZE, (px, py) => {
+        const sums = [0, 0, 0];
+        for (let sy = 0; sy < 4; sy++) {
+            for (let sx = 0; sx < 4; sx++) {
+                const d = Math.hypot(px + (sx + 0.5) / 4 - 150, py + (sy + 0.5) / 4 - 150);
+                const c = d < 70 ? BLUE : d >= 85 && d < 100 ? [13, 148, 136] : WHITE;
+                for (let k = 0; k < 3; k++) sums[k] += c[k];
+            }
+        }
+
+        return sums.map((s) => Math.round(s / 16));
+    });
+
+const colourDistance = (hex, rgb) => {
+    const v = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+
+    return Math.hypot(v[0] - rgb[0], v[1] - rgb[1], v[2] - rgb[2]);
+};
+
+test('the palette suggestion ignores the anti-aliased halo left by background removal', () => {
+    const image = aaLogo();
+    const palette = paletteFromArtwork(image, 4, {}, KEYCAP_BODY);
+    const truth = [WHITE, BLUE, [13, 148, 136]];
+
+    assert.ok(palette.length > 0);
+    // The enclosed white ring keeps its own interior blends, so only the leading slots must be true colours.
+    for (const hex of palette.slice(0, 3)) {
+        assert.ok(
+            truth.some((rgb) => colourDistance(hex, rgb) < 40),
+            `${hex} is not an artwork colour`,
+        );
+    }
+});
+
+test('without removal the palette suggestion is exactly suggestPalette', () => {
+    const image = aaLogo();
+
+    assert.deepEqual(paletteFromArtwork(image, 4, { remove_background: false }, KEYCAP_BODY), suggestPalette(image, 4));
+    assert.deepEqual(paletteFromArtwork(image, 4, {}, BODY), suggestPalette(image, 4));
+    const transparent = makeImage(SIZE, SIZE, (x, y) => (Math.hypot(x - 150, y - 150) < 100 ? BLUE : null));
+    assert.deepEqual(paletteFromArtwork(transparent, 3, {}, KEYCAP_BODY), suggestPalette(transparent, 3));
+});
+
+test('trace says so when the background could not be removed', () => {
+    const settings = { ...SETTINGS, base_shape: 'trace' };
+    let seed = 11;
+    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const photo = makeImage(SIZE, SIZE, (x, y) => (Math.hypot(x - 150, y - 150) < 100 ? BLUE : [rand() * 255, rand() * 255, rand() * 255]));
+    const flat = makeImage(100, 400, () => BLUE);
+    const notes = (image, s = settings) => analyzeArtwork(image, s, KEYCAP_BODY, 'preview').notes;
+
+    assert.ok(notes(photo).includes(NO_BACKGROUND_NOTE));
+    assert.ok(notes(flat).includes(NO_BACKGROUND_NOTE));
+    assert.ok(!notes(logo()).includes(NO_BACKGROUND_NOTE), 'removal worked');
+    assert.ok(!notes(photo, { ...settings, remove_background: false }).includes(NO_BACKGROUND_NOTE));
+    assert.ok(!notes(makeImage(SIZE, SIZE, (x, y) => (Math.hypot(x - 150, y - 150) < 100 ? BLUE : null))).includes(NO_BACKGROUND_NOTE));
+    assert.ok(!analyzeArtwork(photo, { ...settings, base_shape: 'square' }, KEYCAP_BODY, 'preview').notes.includes(NO_BACKGROUND_NOTE));
 });
 
 test('tiny images do not crash', () => {

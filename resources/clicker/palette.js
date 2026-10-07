@@ -34,18 +34,37 @@ function mean(points) {
  *
  * @param {{data: Uint8Array|Uint8ClampedArray, width: number, height: number}} image RGBA pixels
  * @param {number} k how many colours to return (fewer when the image has fewer distinct colours)
+ * @param {{ignoreEdge?: boolean}} [options] ignoreEdge skips opaque pixels 4-adjacent to a transparent one (the
+ *   anti-aliased halo left after a background was removed), unless that would leave nothing
  * @returns {string[]}
  */
-export function suggestPalette(image, k) {
+export function suggestPalette(image, k, options = {}) {
     const { data, width, height } = image;
     const total = width * height;
     const stride = Math.max(1, Math.floor(total / 60000));
-    const pixels = [];
 
-    for (let i = 0; i < total; i += stride) {
-        const o = i * 4;
-        if (data[o + 3] >= 128) pixels.push([data[o], data[o + 1], data[o + 2]]);
-    }
+    const collect = (skipEdge) => {
+        const found = [];
+        for (let i = 0; i < total; i += stride) {
+            const o = i * 4;
+            if (data[o + 3] < 128) continue;
+            if (skipEdge) {
+                const x = i % width;
+                if (
+                    (x > 0 && data[o - 4 + 3] < 128) ||
+                    (x < width - 1 && data[o + 4 + 3] < 128) ||
+                    (i >= width && data[o - width * 4 + 3] < 128) ||
+                    (i < total - width && data[o + width * 4 + 3] < 128)
+                )
+                    continue;
+            }
+            found.push([data[o], data[o + 1], data[o + 2]]);
+        }
+
+        return found;
+    };
+    let pixels = options.ignoreEdge ? collect(true) : [];
+    if (pixels.length === 0) pixels = collect(false);
     if (pixels.length === 0) return [];
 
     const boxes = [pixels];
