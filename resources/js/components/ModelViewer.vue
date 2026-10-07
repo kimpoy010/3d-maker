@@ -137,8 +137,8 @@ function showParts(list: Part[]) {
     disposeModel();
 
     if (list.length === 0) {
-        // Nothing to draw: an empty bounding box would give NaN positions, so start framing afresh next time.
-        framedOnce = false;
+        // Nothing to draw (an empty bounding box would give NaN positions). The framing state is kept so the
+        // next list for the same body restores the user's camera instead of re-framing.
         return;
     }
 
@@ -167,7 +167,11 @@ function showParts(list: Part[]) {
     const sizeKey = `${first.x.toFixed(2)},${first.y.toFixed(2)},${first.z.toFixed(2)}`;
 
     if (framedOnce && sizeKey === framedFor) {
-        group.position.copy(centerOffset);
+        // Same body: keep the camera and the user's orbit, but re-centre on the orbit target when the parts'
+        // overall bounds changed (for example a taller base), by updating the stored offset from the new bounds.
+        const bounds = new THREE.Box3().setFromObject(group);
+        if (!bounds.isEmpty()) group.position.sub(bounds.getCenter(new THREE.Vector3()));
+        centerOffset.copy(group.position);
     } else {
         frameModel(group, true);
         centerOffset.copy(group.position);
