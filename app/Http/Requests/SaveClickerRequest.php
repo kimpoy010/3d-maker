@@ -35,6 +35,8 @@ class SaveClickerRequest extends FormRequest
             'settings.outline_mm' => ['required', 'numeric', 'min:0', 'max:2'],
             'settings.outline_hex' => $hex,
             'settings.base_shape' => ['nullable', Rule::in(['square', 'circle', 'trace'])],
+            'settings.hollow_cap' => ['nullable', 'boolean'],
+            'settings.remove_background' => ['nullable', 'boolean'],
             'artwork' => [$creating ? 'required' : 'nullable', 'file', 'mimes:png', 'max:'.config('clicker.upload.max_kb'), $this->megapixelCap(...)],
             'thumbnail' => ['nullable', 'file', 'mimes:png,jpg,jpeg', 'max:1024'],
         ];
@@ -75,6 +77,8 @@ class SaveClickerRequest extends FormRequest
             'outline_mm' => (float) $settings['outline_mm'],
             'outline_hex' => strtoupper($settings['outline_hex']),
             'base_shape' => $settings['base_shape'] ?? 'square',
+            'hollow_cap' => filter_var($settings['hollow_cap'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'remove_background' => filter_var($settings['remove_background'] ?? true, FILTER_VALIDATE_BOOLEAN),
         ];
     }
 

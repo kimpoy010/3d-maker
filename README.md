@@ -133,6 +133,14 @@ All sizes are millimetres and live in the body config under `keycap` (defaults f
 
 Print the cap upright, without supports: the body is solid and the cross socket opens at the bottom. The body is a single closed solid with the cross socket open at the bottom.
 
+Three more options come with the keycap body:
+
+- **Base.** Every build also includes a switch base (a housing with a cutout for the switch) placed beside the cap, flipped so its plate is on the build plate. It prints plate-down, so it needs no supports. Its numbers are in the body config under `keycap.base`: `height` 12, `plate` 1.5, `wall` 2.0, `cutout` 14.1, `gap` 4.0 (to the cap), `spacing` 10 (between parts) and `hex` `#6B7280`.
+- **Hollow cap** (`settings.hollow_cap`, default off). The cap becomes a shell with a cavity under the roof; the numbers are `keycap.hollow`: `wall` 1.6, `plate` 2.0 and `boss_radius` 3.6 (the boss around the stem). Printed upright, the cavity roof needs supports. If the shape is too small for a cavity, the cap stays solid and the editor says so.
+- **Background removal** (`settings.remove_background`, default on). A plain background colour touching the artwork edge is made transparent before the build, so it does not become part of the print. Turn it off for artwork that really has a solid background. Designs saved before these two settings read as hollow off and background removal on.
+
+The numbers are tuneable in the body config. A re-seed does not overwrite an existing body, so edit the row's `config` JSON (or merge the `keycap.hollow` and `keycap.base` blocks into it) on a database that already has the keycap body.
+
 Re-seeding does NOT overwrite an existing body, so to change the numbers edit the body's row (its `config` JSON) or add a new body. Also change `sampleConfig()` for new installs. The app is reached at the `php artisan serve` address (<http://127.0.0.1:8000>) with `npm run dev` running alongside.
 
 **Adding another clicker body.** Static bodies are model files you have printed and tested. Put the STL (or several) in `resources/clicker/bodies/<slug>/` and add an entry to `database/seeders/ClickerBodySeeder.php` with the cap size, the artwork area, the highest layer, the smallest printable detail and the switch it takes (see `ClickerBody::legacyConfig()` for every field and its unit).

@@ -26,7 +26,11 @@ it('seeds the Cherry MX keycap body once, active, with a generator config and no
         ->and($body->config['keycap']['socket_depth'])->toBe(4.5)
         ->and($body->config['keycap']['stem']['span'])->toBe(4.2)
         ->and($body->config['keycap']['stem']['arm'])->toBe(1.35)
-        ->and($body->config['keycap']['stem']['wall'])->toBe(1.2);
+        ->and($body->config['keycap']['stem']['wall'])->toBe(1.2)
+        ->and($body->config['keycap']['hollow'])->toEqual(['wall' => 1.6, 'plate' => 2.0, 'boss_radius' => 3.6])
+        ->and($body->config['keycap']['base'])->toEqual([
+            'height' => 12, 'plate' => 1.5, 'wall' => 2.0, 'cutout' => 14.1, 'gap' => 4.0, 'spacing' => 10, 'hex' => '#6B7280',
+        ]);
 });
 
 it('does not seed the placeholder slab, which stays creatable through its factory', function () {

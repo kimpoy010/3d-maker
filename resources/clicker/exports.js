@@ -65,7 +65,7 @@ export function stlFileName(part, index) {
 /** A zip of one binary STL per part plus a README with the part list and print notes. */
 export function encodeStlZip(parts, notes = [], folder = 'clicker') {
     const files = {};
-    const lines = ['Clicker print files', '', 'Parts (one STL each, all share the same origin so they line up when imported together):'];
+    const lines = ['Clicker print files', '', 'Parts (one STL each, the cap and colour parts share one origin so they line up when imported together; the base is placed beside them, flipped plate-down, ready to print):'];
 
     parts.forEach((part, index) => {
         const name = stlFileName(part, index);

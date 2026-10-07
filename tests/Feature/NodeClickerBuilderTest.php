@@ -64,6 +64,9 @@ it('passes a generator body through with no body files', function () {
     expect($job['bodyFiles'])->toBe([])
         ->and($job['body'])->toHaveKeys(['generator', 'keycap', 'cap', 'artwork_area', 'max_layer_height', 'min_feature'])
         ->and($job['body']['generator'])->toBe('mx_keycap')
+        ->and($job['body']['keycap']['hollow'])->toEqual(['wall' => 1.6, 'plate' => 2.0, 'boss_radius' => 3.6])
+        ->and($job['body']['keycap']['base']['hex'])->toBe('#6B7280')
+        ->and($job['body']['keycap']['base']['cutout'])->toBe(14.1)
         ->and($job['body'])->not->toHaveKey('switch');
 });
 

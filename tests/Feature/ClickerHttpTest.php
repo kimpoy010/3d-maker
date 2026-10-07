@@ -140,6 +140,70 @@ it('rejects an unknown base shape', function () {
     expect(Clicker::count())->toBe(0);
 });
 
+it('stores the hollow cap and background settings as real booleans', function (mixed $hollow, mixed $remove, bool $expectedHollow, bool $expectedRemove) {
+    $settings = array_replace($this->settings, ['hollow_cap' => $hollow, 'remove_background' => $remove]);
+
+    $this->actingAs($this->user)->post('/clickers', ($this->payload)(['settings' => $settings]))->assertSessionHasNoErrors();
+
+    $stored = Clicker::firstOrFail()->settings;
+    expect($stored['hollow_cap'])->toBe($expectedHollow)
+        ->and($stored['remove_background'])->toBe($expectedRemove);
+})->with([
+    'true true' => [true, true, true, true],
+    'true false' => [true, false, true, false],
+    'false true' => [false, true, false, true],
+    'false false' => [false, false, false, false],
+    'strings' => ['1', '0', true, false],
+]);
+
+it('defaults missing hollow cap and background settings', function () {
+    $settings = $this->settings;
+    unset($settings['hollow_cap'], $settings['remove_background']);
+
+    $this->actingAs($this->user)->post('/clickers', ($this->payload)(['settings' => $settings]))->assertSessionHasNoErrors();
+
+    $stored = Clicker::firstOrFail()->settings;
+    expect($stored['hollow_cap'])->toBeFalse()
+        ->and($stored['remove_background'])->toBeTrue();
+});
+
+it('rejects a non-boolean hollow cap or background setting', function (string $field) {
+    $this->actingAs($this->user)
+        ->post('/clickers', ($this->payload)(['settings' => array_replace($this->settings, [$field => 'maybe'])]))
+        ->assertSessionHasErrors("settings.{$field}");
+
+    expect(Clicker::count())->toBe(0);
+})->with(['hollow_cap', 'remove_background']);
+
+it('gives an old design without the new settings their defaults in the editor', function () {
+    $clicker = ($this->saved)();
+
+    $this->actingAs($this->user)->get("/clickers/{$clicker->id}")->assertInertia(fn (Assert $page) => $page
+        ->where('clicker.settings.hollow_cap', false)
+        ->where('clicker.settings.remove_background', true)
+        ->where('clicker.settings.scale', $clicker->settings['scale']));
+});
+
+it('keeps saved hollow cap and background values in the editor', function () {
+    $clicker = ($this->saved)(['settings' => array_replace($this->settings, ['hollow_cap' => true, 'remove_background' => false])]);
+
+    $this->actingAs($this->user)->get("/clickers/{$clicker->id}")->assertInertia(fn (Assert $page) => $page
+        ->where('clicker.settings.hollow_cap', true)
+        ->where('clicker.settings.remove_background', false));
+});
+
+it('updates the hollow cap setting of a saved design', function () {
+    $clicker = ($this->saved)();
+
+    $this->actingAs($this->user)->put("/clickers/{$clicker->id}", [
+        'name' => 'Skull',
+        'clicker_body_id' => $this->body->id,
+        'settings' => array_replace($this->settings, ['hollow_cap' => true]),
+    ])->assertSessionHasNoErrors();
+
+    expect($clicker->fresh()->settings['hollow_cap'])->toBeTrue();
+});
+
 it('hands the generator and keycap config of a body to the editor', function () {
     ClickerBody::query()->delete();
     ClickerBody::factory()->keycap()->create();

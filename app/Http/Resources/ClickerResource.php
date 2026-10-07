@@ -21,7 +21,8 @@ class ClickerResource extends JsonResource
             'name' => $this->name,
             'status' => $this->status->value,
             'error' => $this->build_error,
-            'settings' => $this->settings,
+            // Designs saved before these two settings existed get their defaults.
+            'settings' => array_replace(['hollow_cap' => false, 'remove_background' => true], $this->settings ?? []),
             'body_id' => $this->clicker_body_id,
             'unlocked' => $this->isUnlocked(),
             'editable' => ! $this->isUnlocked() && $this->status !== ClickerStatus::Building,
