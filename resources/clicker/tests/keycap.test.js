@@ -1,0 +1,127 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { KEYCAP_DEFAULTS, buildKeycapBody, circleOutline, keycapConfig, mergeMeshes, squareOutline, stemClearance } from '../keycap.js';
+import { bounds, isClosedManifold, meshVolume } from '../mesh.js';
+import { signedArea } from '../trace.js';
+
+const near = (actual, expected, relative, label) =>
+    assert.ok(Math.abs(actual - expected) <= Math.abs(expected) * relative, `${label}: ${actual} vs ${expected}`);
+
+const lShape = [
+    [-15, -15],
+    [15, -15],
+    [15, -5],
+    [-5, -5],
+    [-5, 15],
+    [-15, 15],
+];
+
+const cases = {
+    square: { outline: () => squareOutline(KEYCAP_DEFAULTS), stem: { x: 0, y: 0 } },
+    circle: { outline: () => circleOutline(KEYCAP_DEFAULTS), stem: { x: 0, y: 0 } },
+    L: { outline: () => lShape, stem: { x: -10, y: 0 } },
+};
+
+for (const [name, { outline: make, stem }] of Object.entries(cases)) {
+    test(`keycap body (${name}) is built from two closed shells`, () => {
+        const outline = make();
+        const keycap = keycapConfig({});
+        const body = buildKeycapBody({ outline, stem, keycap });
+        const { span, arm } = keycap.stem;
+        const depth = keycap.socket_depth + 0.4;
+        const area = Math.abs(signedArea(outline));
+        const [shellA, shellB] = body.shells;
+
+        assert.equal(body.kind, 'body');
+        assert.equal(body.name, 'Body');
+        assert.equal(body.hex, '#9CA3AF');
+        assert.ok(isClosedManifold(shellA), 'shell A manifold');
+        assert.ok(isClosedManifold(shellB), 'shell B manifold');
+
+        const crossArea = 2 * span * arm - arm * arm;
+        near(meshVolume(shellA), (area - crossArea) * depth, 0.005, 'shell A volume');
+        near(meshVolume(shellB), area * (keycap.height - keycap.socket_depth), 0.005, 'shell B volume');
+        near(meshVolume(body), meshVolume(shellA) + meshVolume(shellB), 1e-6, 'merged volume');
+    });
+
+    test(`keycap body (${name}) spans the outline and the full height`, () => {
+        const outline = make();
+        const keycap = keycapConfig({});
+        const body = buildKeycapBody({ outline, stem, keycap });
+        const [minX, minY, minZ, maxX, maxY, maxZ] = bounds(body);
+
+        assert.equal(minZ, 0);
+        assert.equal(maxZ, keycap.height);
+        assert.ok(Math.abs(minX - Math.min(...outline.map((p) => p[0]))) < 1e-4);
+        assert.ok(Math.abs(maxX - Math.max(...outline.map((p) => p[0]))) < 1e-4);
+        assert.ok(Math.abs(minY - Math.min(...outline.map((p) => p[1]))) < 1e-4);
+        assert.ok(Math.abs(maxY - Math.max(...outline.map((p) => p[1]))) < 1e-4);
+    });
+
+    test(`keycap body (${name}) shows the cross hole`, () => {
+        const keycap = keycapConfig({});
+        const body = buildKeycapBody({ outline: make(), stem, keycap });
+        const { span, arm } = keycap.stem;
+        const has = (x, y) => {
+            for (let i = 0; i < body.positions.length; i += 3) {
+                if (Math.abs(body.positions[i] - x) < 1e-4 && Math.abs(body.positions[i + 1] - y) < 1e-4) return true;
+            }
+
+            return false;
+        };
+
+        assert.ok(has(stem.x + span / 2, stem.y - arm / 2));
+        assert.ok(has(stem.x - span / 2, stem.y + arm / 2));
+        assert.ok(has(stem.x + arm / 2, stem.y + span / 2));
+        assert.ok(has(stem.x - arm / 2, stem.y - span / 2));
+    });
+}
+
+test('squareOutline is a counter-clockwise rounded square centred on the origin', () => {
+    const { size, corner_radius: r } = KEYCAP_DEFAULTS;
+    const ring = squareOutline(KEYCAP_DEFAULTS);
+    const area = signedArea(ring);
+
+    assert.ok(area > 0);
+    assert.ok(area < size * size);
+    assert.ok(area > size * size - (4 - Math.PI) * r ** 2 - 0.5);
+    const [minX, minY, , maxX, maxY] = bounds({ positions: Float32Array.from(ring.flatMap((p) => [p[0], p[1], 0])) });
+    assert.ok(Math.abs(minX + size / 2) < 1e-6 && Math.abs(maxX - size / 2) < 1e-6);
+    assert.ok(Math.abs(minY + size / 2) < 1e-6 && Math.abs(maxY - size / 2) < 1e-6);
+});
+
+test('circleOutline is a counter-clockwise circle of the given diameter', () => {
+    const ring = circleOutline(KEYCAP_DEFAULTS);
+    const area = signedArea(ring);
+
+    assert.ok(area > 0);
+    near(area, Math.PI * (KEYCAP_DEFAULTS.size / 2) ** 2, 0.005, 'circle area');
+});
+
+test('keycapConfig merges over the defaults, deeply for the stem', () => {
+    assert.deepEqual(keycapConfig({}), KEYCAP_DEFAULTS);
+    const merged = keycapConfig({ keycap: { stem: { arm: 1.5 }, height: 9 } });
+
+    assert.equal(merged.stem.arm, 1.5);
+    assert.equal(merged.stem.span, KEYCAP_DEFAULTS.stem.span);
+    assert.equal(merged.stem.wall, KEYCAP_DEFAULTS.stem.wall);
+    assert.equal(merged.height, 9);
+    assert.equal(KEYCAP_DEFAULTS.stem.arm, 1.35, 'defaults are not mutated');
+});
+
+test('stemClearance is the distance from the stem centre to the cross corner plus the wall', () => {
+    const { span, arm, wall } = KEYCAP_DEFAULTS.stem;
+
+    near(stemClearance(KEYCAP_DEFAULTS), (span / 2) * Math.hypot(1, arm / span) + wall, 1e-9, 'clearance');
+    assert.ok(stemClearance(KEYCAP_DEFAULTS) > span / 2 + wall);
+});
+
+test('mergeMeshes concatenates with index offsets', () => {
+    const a = { positions: Float32Array.of(0, 0, 0, 1, 0, 0, 0, 1, 0), indices: Uint32Array.of(0, 1, 2) };
+    const b = { positions: Float32Array.of(5, 5, 5, 6, 5, 5, 5, 6, 5), indices: Uint32Array.of(0, 2, 1) };
+    const merged = mergeMeshes([a, b]);
+
+    assert.equal(merged.positions.length, 18);
+    assert.deepEqual([...merged.indices], [0, 1, 2, 3, 5, 4]);
+    assert.ok(merged.positions instanceof Float32Array && merged.indices instanceof Uint32Array);
+});
