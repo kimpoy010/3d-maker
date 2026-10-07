@@ -176,6 +176,8 @@ export function cleanSpecks(labels, width, height, minArea) {
             }
         }
         for (const p of cells) mark[p] = 0;
+        // An earlier merge may have joined this speck to a bigger region: it is no longer small.
+        if (cells.length >= minArea) continue;
         if (neighbours.size === 0) continue;
         let target = BG;
         let most = -1;

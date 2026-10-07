@@ -72,6 +72,16 @@ test('cleanSpecks merges a tiny region into its surroundings and keeps big ones'
     assert.equal(labels[4 * width + 2], 1, 'the 8 pixel region stayed');
 });
 
+test('cleanSpecks does not swallow a big region that a merged speck joined to a small one', () => {
+    // The lone 1 sits between a big 0 region and a tiny 0 region. Filling it joins them into one region
+    // of 8 pixels, which is no longer small and must stay.
+    const { labels, width, height } = gridFromRows(['.........', '.00000100.', '.........']);
+    cleanSpecks(labels, width, height, 4);
+
+    const zeros = [...labels].filter((label) => label === 0).length;
+    assert.equal(zeros, 8, 'the joined region survived');
+});
+
 test('thinResidue sees a thin line but not a thick block', () => {
     const line = gridFromRows(['.........', '.........', '.0000000.', '.........', '.........']);
     const block = gridFromRows(['.........', '.0000000.', '.0000000.', '.0000000.', '.........']);
