@@ -38,6 +38,7 @@ class SaveClickerRequest extends FormRequest
             'settings.base_shape' => ['nullable', Rule::in(['square', 'circle', 'trace'])],
             'settings.hollow_cap' => ['nullable', 'boolean'],
             'settings.remove_background' => ['nullable', 'boolean'],
+            'settings.cap_insertion' => ['nullable', 'numeric', 'between:0.5,1'],
             'artwork' => [$creating ? 'required' : 'nullable', 'file', 'mimes:png', 'max:'.config('clicker.upload.max_kb'), $this->megapixelCap(...)],
             'thumbnail' => ['nullable', 'file', 'mimes:png,jpg,jpeg', 'max:1024'],
         ];
@@ -82,6 +83,8 @@ class SaveClickerRequest extends FormRequest
             'base_shape' => $settings['base_shape'] ?? 'square',
             'hollow_cap' => filter_var($settings['hollow_cap'] ?? false, FILTER_VALIDATE_BOOLEAN),
             'remove_background' => filter_var($settings['remove_background'] ?? $generated, FILTER_VALIDATE_BOOLEAN),
+            // How far the cap sits inside the open-top base at rest, as a fraction of the cap height.
+            'cap_insertion' => (float) ($settings['cap_insertion'] ?? 0.5),
         ];
     }
 

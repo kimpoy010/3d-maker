@@ -131,12 +131,14 @@ The user picks a base shape in the editor (saved as `settings.base_shape`, defau
 
 All sizes are millimetres and live in the body config under `keycap` (defaults from `ClickerBody::sampleConfig()`): `size` 30, `rim` 2, `corner_radius` 4, `height` 8, `socket_depth` 4.5, and the cross-socket numbers `stem.span` 4.2, `stem.arm` 1.35, `stem.wall` 1.2. The stem numbers have not been tested on a real switch.
 
-**Two printed pieces.** Every build produces a **Cap** (the colour parts plus the body, one closed solid with the cross socket open at the bottom) and a **Base** (the housing that holds the Cherry MX switch). The 3MF has the colour parts, the outline part when an outline is set, and the `Cap` and `Base` objects. The STL zip has one file per piece: `NN-colour-<hex>.stl` for each colour, `NN-cap.stl` and `NN-base.stl` (NN is the running number).
+**Two printed pieces.** Every build produces a **Cap** (the colour parts plus the body, one closed solid with the cross socket open at the bottom) and a **Base** (an open-top housing that holds the Cherry MX switch; the cap slides into it from above). The 3MF has the colour parts, the outline part when an outline is set, and the `Cap` and `Base` objects. The STL zip has one file per piece: `NN-colour-<hex>.stl` for each colour, `NN-cap.stl` and `NN-base.stl` (NN is the running number).
 
 How each piece prints:
 
 - **Cap**: upright, as modelled (cross socket facing the plate). The solid cap prints without supports. The hollow cap needs supports under its cavity roof.
-- **Base**: exported already flipped, plate down, and placed beside the cap, so it sits flat on the bed. No supports.
+- **Base**: upright, plate down, with its open top facing up, placed beside the cap, so it sits flat on the bed. No supports. It is slightly bigger than the cap (`clearance` on each side) so the cap slides in, and it has a cutout in the plate for the switch.
+
+**Cap depth inside base** (`settings.cap_insertion`, a fraction from 0.5 to 1, default 0.5, shown in the editor as a 50 to 100 percent slider for generated bodies). It sets how far the cap sits inside the base at rest: the rim of the base stands at that fraction of the cap height, so the cap always slides in at least half way. A deeper cap makes a taller base. The cap's travel is limited by the gap left under it, so a solid cap, which is shorter inside, gives less key travel than a hollow cap. Designs saved without the setting read as 0.5. Legacy bodies ignore it.
 
 Options that come with the keycap body (saved in the design's `settings`):
 
@@ -147,9 +149,9 @@ Options that come with the keycap body (saved in the design's `settings`):
 
 - `keycap.stem`: `span` 4.2, `arm` 1.35, `wall` 1.2 (the cross socket).
 - `keycap.hollow`: `wall` 1.6, `plate` 2.0, `boss_radius` 3.6.
-- `keycap.base`: `height` 12, `plate` 1.5, `wall` 2.0, `cutout` 14.1, `gap` 4.0 (preview gap to the cap), `spacing` 10 (between printed parts), `hex` `#6B7280`.
+- `keycap.base`: `clearance` 0.3 (gap around the cap), `wall` 2.0, `plate` 1.5, `under` 6.0 (room below the resting cap), `cavity` 16.2 (switch cavity), `cutout` 14.1 (switch cutout in the plate), `rest_gap` 8.0 (gap between cap and base plate at rest), `spacing` 10 (between printed parts), `hex` `#6B7280`. The old `height` and `gap` keys are ignored. `rest_gap`, `under`, `cavity`, `clearance` and `cutout` are provisional until a test print; they live in the body config (`ClickerBody::sampleConfig()` for new installs, the body row for an existing one).
 
-Change them in the active body's row (its `config` JSON, merging the `keycap.stem`, `keycap.hollow` and `keycap.base` blocks). A re-seed does NOT overwrite an existing body; also change `sampleConfig()` for new installs, or add a new body. The app is reached at the `php artisan serve` address (<http://127.0.0.1:8000>) with `npm run dev` running alongside.
+Change them in the active body's row (its `config` JSON, replacing or merging the `keycap.stem`, `keycap.hollow` and `keycap.base` blocks). A re-seed does NOT overwrite an existing body; also change `sampleConfig()` for new installs, or add a new body. The app is reached at the `php artisan serve` address (<http://127.0.0.1:8000>) with `npm run dev` running alongside.
 
 **Adding another clicker body.** Static bodies are model files you have printed and tested. Put the STL (or several) in `resources/clicker/bodies/<slug>/` and add an entry to `database/seeders/ClickerBodySeeder.php` with the cap size, the artwork area, the highest layer, the smallest printable detail and the switch it takes (see `ClickerBody::legacyConfig()` for every field and its unit).
 

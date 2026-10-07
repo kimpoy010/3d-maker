@@ -14,6 +14,8 @@ export type ClickerSettings = {
     base_shape: BaseShape;
     hollow_cap: boolean;
     remove_background: boolean;
+    /** How far the cap sits inside the base at rest, as a fraction of the cap height (0.5 to 1). */
+    cap_insertion: number;
 };
 
 export type BaseShape = 'square' | 'circle' | 'trace';

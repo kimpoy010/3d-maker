@@ -196,6 +196,46 @@ it('rejects a non-boolean hollow cap or background setting', function (string $f
     expect(Clicker::count())->toBe(0);
 })->with(['hollow_cap', 'remove_background']);
 
+it('stores the cap insertion as a float', function (mixed $value, float $expected) {
+    $this->actingAs($this->user)
+        ->post('/clickers', ($this->payload)(['settings' => array_replace($this->settings, ['cap_insertion' => $value])]))
+        ->assertSessionHasNoErrors();
+
+    // JSON storage turns 1.0 back into 1, so compare by value.
+    expect(Clicker::firstOrFail()->settings['cap_insertion'])->toEqual($expected);
+})->with([
+    'half' => [0.5, 0.5],
+    'three quarters' => [0.75, 0.75],
+    'full int' => [1, 1.0],
+    'string' => ['0.85', 0.85],
+]);
+
+it('defaults a missing cap insertion to half', function () {
+    $settings = $this->settings;
+    unset($settings['cap_insertion']);
+
+    $this->actingAs($this->user)->post('/clickers', ($this->payload)(['settings' => $settings]))->assertSessionHasNoErrors();
+
+    expect(Clicker::firstOrFail()->settings['cap_insertion'])->toBe(0.5);
+});
+
+it('rejects a cap insertion outside 0.5 to 1 or not a number', function (mixed $value) {
+    $this->actingAs($this->user)
+        ->post('/clickers', ($this->payload)(['settings' => array_replace($this->settings, ['cap_insertion' => $value])]))
+        ->assertSessionHasErrors('settings.cap_insertion');
+
+    expect(Clicker::count())->toBe(0);
+})->with([0.4, 1.1, 'abc']);
+
+it('loads an old design without a cap insertion as half', function () {
+    $settings = $this->settings;
+    unset($settings['cap_insertion']);
+    $clicker = ($this->saved)(['settings' => $settings]);
+
+    $this->actingAs($this->user)->get("/clickers/{$clicker->id}")->assertInertia(fn (Assert $page) => $page
+        ->where('clicker.settings.cap_insertion', 0.5));
+});
+
 it('gives an old design without the new settings their defaults in the editor', function () {
     $clicker = ($this->saved)();
 

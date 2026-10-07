@@ -47,6 +47,7 @@ const emptySettings = (): ClickerSettings => ({
     base_shape: 'square',
     hollow_cap: false,
     remove_background: true,
+    cap_insertion: 0.5,
 });
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 // Designs saved before base shapes existed have no base_shape: they are square. Designs saved before the base and
@@ -60,6 +61,9 @@ const normalise = (saved: ClickerSettings, forBody: number): ClickerSettings => 
     }
     merged.hollow_cap = !!merged.hollow_cap;
     merged.remove_background = !!merged.remove_background;
+    // Designs saved before the open-top base have no cap_insertion: the cap sits half way in.
+    const insertion = Number(merged.cap_insertion);
+    merged.cap_insertion = Number.isFinite(insertion) ? Math.min(1, Math.max(0.5, insertion)) : 0.5;
 
     return merged;
 };
@@ -105,6 +109,14 @@ const previewParts = computed<Part[]>(() => {
 const showPosition = computed(() => !(isGenerated.value && settings.value.base_shape === 'trace'));
 const steps = computed(() => (isGenerated.value ? { colours: 4, size: 5 } : { colours: 3, size: 4 }));
 
+// The slider works in whole percent; the setting is stored as a fraction (0.5 to 1).
+const capInsertionPercent = computed<number>({
+    get: () => Math.round(settings.value.cap_insertion * 100),
+    set: (percent) => {
+        settings.value.cap_insertion = Math.min(1, Math.max(0.5, Math.round(Number(percent)) / 100));
+    },
+});
+
 // ---- the preview pipeline: a slow half (colours, tracing) and a fast half (heights)
 const analysisKey = computed(() =>
     JSON.stringify([
@@ -116,6 +128,7 @@ const analysisKey = computed(() =>
         settings.value.base_shape,
         settings.value.hollow_cap,
         settings.value.remove_background,
+        settings.value.cap_insertion, // the base is built from it
         settings.value.colors.map((c) => [c.hex, c.enabled]),
     ]),
 );
@@ -477,6 +490,26 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                 <span :id="`${option.key}-hint`" class="block text-xs text-muted-foreground">{{ option.hint }}</span>
                             </span>
                         </label>
+                        <div class="rounded-xl border p-3 text-sm">
+                            <label for="cap-insertion" class="flex justify-between font-medium">
+                                <span>Cap depth inside base</span>
+                                <span class="text-muted-foreground" aria-hidden="true">{{ capInsertionPercent }}%</span>
+                            </label>
+                            <input
+                                id="cap-insertion"
+                                v-model.number="capInsertionPercent"
+                                type="range"
+                                min="50"
+                                max="100"
+                                step="5"
+                                class="w-full"
+                                :aria-valuetext="`${capInsertionPercent} percent`"
+                                aria-describedby="cap-insertion-hint"
+                            />
+                            <span id="cap-insertion-hint" class="block text-xs text-muted-foreground"
+                                >How far the cap sits inside the base at rest.</span
+                            >
+                        </div>
                     </section>
 
                     <section class="space-y-3">
