@@ -1,6 +1,8 @@
 import { hexToRgb } from './color.js';
+import { buildKeycapBody, circleOutline, keycapConfig, squareOutline, stemClearance } from './keycap.js';
 import { extrudePolygons, toMm } from './mesh.js';
 import { BG, applyCapMask, buildLabels, cleanSpecks, downscale, paintOutline, thinResidue } from './raster.js';
+import { traceOutline } from './trace-outline.js';
 import { traceLabel } from './trace.js';
 
 export { suggestPalette } from './palette.js';
@@ -8,7 +10,35 @@ export { suggestPalette } from './palette.js';
 /** Longest side of the working pixel grid. */
 export const MAX_SIDE = { preview: 1024, final: 2048 };
 
+export const BASE_SHAPES = ['square', 'circle', 'trace'];
+
+export const STEM_BLOCKER = 'This shape is too thin to hold the switch stem. Make the artwork larger or choose Square or Circle.';
+
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+/** True for a body whose mesh is generated here (a Cherry MX keycap) rather than loaded from files. */
+const isGenerated = (body) => body?.generator === 'mx_keycap';
+
+/** The chosen base shape; missing or unknown values mean square. */
+const baseShape = (settings) => (BASE_SHAPES.includes(settings.base_shape) ? settings.base_shape : 'square');
+
+/** Cap mask and artwork area for a keycap: Square/Circle keep a rim free; Trace fits the art to the full size and has no mask. */
+function keycapLayout(keycap, shape) {
+    const { size, rim } = keycap;
+    if (shape === 'trace') return { cap: null, artwork_area: { cx: 0, cy: 0, width: size, height: size } };
+
+    return {
+        cap: {
+            shape: shape === 'circle' ? 'circle' : 'rounded',
+            width: size,
+            height: size,
+            corner_radius: keycap.corner_radius,
+            top_z: keycap.height,
+            inset: 0,
+        },
+        artwork_area: { cx: 0, cy: 0, width: size - 2 * rim, height: size - 2 * rim },
+    };
+}
 
 /** Keep one pixel of every `factor` x `factor` block: a cheap, small copy for the thin-detail check. */
 function subsample(labels, width, height, factor) {
@@ -26,11 +56,16 @@ function subsample(labels, width, height, factor) {
  *
  * @param {{data: Uint8Array|Uint8ClampedArray, width: number, height: number}} image RGBA pixels
  * @param {object} settings {colors: {hex, height_mm, enabled}[], scale, offset_x, offset_y, outline_mm, outline_hex}
- * @param {object} body {cap, artwork_area, max_layer_height, min_feature}
+ * @param {object} body {cap, artwork_area, max_layer_height, min_feature}, or a generated keycap body with
+ *   {generator: 'mx_keycap', keycap, max_layer_height, min_feature}; then settings.base_shape picks the outline
  * @param {'preview'|'final'} quality
+ * @returns analysis; for generated bodies `cap` = {outline, stem} and `blockers` lists reasons the cap cannot be built
  */
 export function analyzeArtwork(image, settings, body, quality = 'preview') {
-    const { cap, artwork_area: area } = body;
+    const generated = isGenerated(body);
+    const keycap = generated ? keycapConfig(body) : null;
+    const shape = generated ? baseShape(settings) : null;
+    const { cap, artwork_area: area } = generated ? keycapLayout(keycap, shape) : body;
     const scaled = downscale(image, MAX_SIDE[quality] ?? MAX_SIDE.preview);
 
     // Millimetres per working pixel: fit the artwork inside the artwork area, then apply the user's scale.
@@ -53,7 +88,7 @@ export function analyzeArtwork(image, settings, body, quality = 'preview') {
     }));
 
     const labels = buildLabels(scaled, palette);
-    applyCapMask(labels, scaled.width, scaled.height, cap, frame);
+    if (cap) applyCapMask(labels, scaled.width, scaled.height, cap, frame);
 
     const notes = [];
     const minArea = Math.max(4, Math.round((body.min_feature / mmPerPx) ** 2));
@@ -96,15 +131,31 @@ export function analyzeArtwork(image, settings, body, quality = 'preview') {
             notes.push(`Colour ${color.index + 1} (${color.hex}) does not appear on the cap, so it was left out.`);
     }
 
-    return { palette, polygons, outlineIndex, notes, mmPerPx, frame };
+    let keycapShape;
+    const blockers = [];
+    if (generated && shape === 'trace') {
+        const traced = traceOutline({ image: scaled, frame, keycap });
+        keycapShape = { outline: traced.outline, stem: traced.stem };
+        notes.push(...traced.notes);
+        if (traced.stemRadius < stemClearance(keycap)) blockers.push(STEM_BLOCKER);
+    } else if (generated) {
+        keycapShape = { outline: shape === 'circle' ? circleOutline(keycap) : squareOutline(keycap), stem: { x: 0, y: 0 } };
+    }
+
+    return { palette, polygons, outlineIndex, notes, mmPerPx, frame, cap: keycapShape, blockers };
 }
 
 /**
  * The fast half: extrude the traced polygons to their heights. Re-run it when only the heights change.
- * @returns {{kind: 'colour'|'outline', name: string, hex: string, positions: Float32Array, indices: Uint32Array}[]}
+ * For a generated keycap body the keycap itself comes last; an analysis with blockers throws the first one.
+ * @returns {{kind: 'colour'|'outline'|'body', name: string, hex: string, positions: Float32Array, indices: Uint32Array}[]}
  */
 export function buildParts(analysis, settings, body) {
-    const top = body.cap.top_z;
+    const generated = isGenerated(body);
+    const keycap = generated ? keycapConfig(body) : null;
+    if (generated && analysis.blockers?.length) throw new Error(analysis.blockers[0]);
+
+    const top = generated ? keycap.height : body.cap.top_z;
     const parts = [];
     let tallest = 0.1;
 
@@ -127,6 +178,8 @@ export function buildParts(analysis, settings, body) {
         const hex = (settings.outline_hex ?? '#111111').toUpperCase();
         parts.push({ kind: 'outline', name: `Outline ${hex}`, hex, ...extrudePolygons(outline, top, top + tallest) });
     }
+
+    if (generated) parts.push(buildKeycapBody({ outline: analysis.cap.outline, stem: analysis.cap.stem, keycap }));
 
     return parts;
 }

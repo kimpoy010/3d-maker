@@ -14,6 +14,39 @@ export function makeImage(width, height, paint) {
     return { data, width, height };
 }
 
+/** Signed distance to a rounded rectangle centred on (cx, cy) with half sizes hw, hh and corner radius r. */
+function roundedRectDistance(x, y, cx, cy, hw, hh, r) {
+    const qx = Math.abs(x - cx) - (hw - r);
+    const qy = Math.abs(y - cy) - (hh - r);
+
+    return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
+}
+
+/**
+ * A logo-like test image on a transparent background, `size` px square: a ring, a rounded-square monitor with a
+ * stand inside it, and a dot touching the ring. Edges are anti-aliased (alpha ramps over about one pixel).
+ */
+export function logoArtwork(size = 500) {
+    const s = size / 500;
+
+    return makeImage(size, size, (px, py) => {
+        const x = (px + 0.5) / s;
+        const y = (py + 0.5) / s;
+        const d = Math.hypot(x - 250, y - 250);
+        const ring = Math.max(d - 230, 200 - d);
+        const frame = Math.max(roundedRectDistance(x, y, 250, 230, 120, 85, 20), -roundedRectDistance(x, y, 250, 230, 100, 65, 10));
+        const stand = Math.min(roundedRectDistance(x, y, 250, 335, 15, 22, 0), roundedRectDistance(x, y, 250, 360, 60, 7, 3));
+        const dot = Math.hypot(x - (250 + 238 * Math.SQRT1_2), y - (250 - 238 * Math.SQRT1_2)) - 22;
+        const monitor = Math.min(frame, stand);
+        const nearest = Math.min(ring, monitor, dot);
+        const alpha = Math.round(255 * Math.max(0, Math.min(1, 0.5 - nearest * s)));
+        if (alpha === 0) return null;
+        const rgb = nearest === dot ? [220, 38, 38] : nearest === ring ? [29, 78, 216] : [17, 17, 17];
+
+        return [...rgb, alpha];
+    });
+}
+
 /** A label grid from rows of text, e.g. ['.##', '#..'] where '.' is background (255) and digits are labels. */
 export function gridFromRows(rows) {
     const height = rows.length;
@@ -33,6 +66,16 @@ export const BODY = {
     artwork_area: { cx: 0, cy: 0, width: 34, height: 44 },
     max_layer_height: 3,
     min_feature: 0.8,
+};
+
+/** A generated Cherry MX keycap body with the default keycap sizes. */
+export const KEYCAP_BODY = {
+    generator: 'mx_keycap',
+    cap: { shape: 'rounded', width: 30, height: 30, corner_radius: 4, top_z: 8, inset: 0 },
+    artwork_area: { cx: 0, cy: 0, width: 26, height: 26 },
+    max_layer_height: 3,
+    min_feature: 0.8,
+    keycap: {},
 };
 
 export const SETTINGS = {

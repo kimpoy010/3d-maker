@@ -21,7 +21,8 @@ try {
 
     const analysis = analyzeArtwork(image, job.settings, job.body, 'final');
     const parts = buildParts(analysis, job.settings, job.body);
-    if (parts.length === 0) throw new Error('The artwork has no printable colour on this body.');
+    // A generated keycap body is always there; it is the artwork that has to print.
+    if (!parts.some((part) => part.kind !== 'body')) throw new Error('The artwork has no printable colour on this body.');
 
     for (const file of job.bodyFiles ?? []) {
         const mesh = parseStl(new Uint8Array(readFileSync(file.path)));
