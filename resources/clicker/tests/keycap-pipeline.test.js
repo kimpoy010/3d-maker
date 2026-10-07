@@ -27,7 +27,7 @@ for (const shape of ['square', 'circle', 'trace']) {
         assert.ok(Array.isArray(analysis.cap.outline) && analysis.cap.outline.length >= 3);
         const body = parts[parts.length - 1];
         assert.equal(body.kind, 'body');
-        assert.equal(body.name, 'Body');
+        assert.equal(body.name, 'Cap');
         assert.ok(isClosedManifold(body));
 
         const [bx0, by0, bz0, bx1, by1, bz1] = bounds(body);
@@ -139,15 +139,15 @@ function writeJob(image, settings, body) {
     return dir;
 }
 
-test('build.mjs builds a trace keycap with a generated Body part', () => {
+test('build.mjs builds a trace keycap with a generated Cap part', () => {
     const dir = writeJob(logoArtwork(300), { ...SETTINGS, base_shape: 'trace' }, KEYCAP_BODY);
     const run = spawnSync(process.execPath, [BUILD, dir], { encoding: 'utf8' });
 
     assert.equal(run.status, 0, run.stderr);
     const model = strFromU8(unzipSync(readFileSync(join(dir, 'clicker.3mf')))['3D/3dmodel.model']);
     const names = [...model.matchAll(/<object [^>]*name="([^"]*)"/g)].map((m) => m[1]);
-    assert.equal(names[names.length - 1], 'Body');
-    assert.equal(names.filter((n) => n === 'Body').length, 1, 'exactly one Body object');
+    assert.equal(names[names.length - 1], 'Cap');
+    assert.equal(names.filter((n) => n === 'Cap').length, 1, 'exactly one Cap object');
     const result = JSON.parse(readFileSync(join(dir, 'result.json'), 'utf8'));
     assert.equal(result.parts[result.parts.length - 1].kind, 'body');
 });

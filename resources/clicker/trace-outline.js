@@ -4,7 +4,7 @@
  */
 
 import { toMm } from './mesh.js';
-import { closeGaps, components, convexHull, dilate, ensureCcw, fillHoles, poleOfInaccessibility, simplifyRing } from './shapes.js';
+import { closeGaps, components, convexHull, dilate, ensureCcw, erode, fillHoles, poleOfInaccessibility, simplifyRing } from './shapes.js';
 import { signedArea, traceLabel } from './trace.js';
 
 export const HULL_NOTE = 'The artwork has separate pieces, so the shape joins them with a wrapped outline.';
@@ -14,6 +14,8 @@ const CLOSING_RADII = [1, 2.5, 5, 8];
 const MAX_CELLS = 512;
 const MIN_CELL_MM = 0.08;
 const SIMPLIFY_MM = 0.03;
+/** Inset and cavity pieces smaller than this (mm²) are dropped. */
+const MIN_PIECE_MM2 = 4;
 
 /** Cells (0/1) whose centre lies inside the convex hull of the set cells' centres, plus the set cells themselves. */
 function hullMask(mask, width, height) {
@@ -63,8 +65,11 @@ function hullMask(mask, width, height) {
 /**
  * @param {{image: {data, width, height}, frame: {left, top, mmPerPx}, keycap: object}} input the scaled RGBA image,
  *   where its top-left corner sits in mm and its mm per pixel, and the keycap config
- * @returns {{outline: number[][], stem: {x: number, y: number}, stemRadius: number, notes: string[]}}
- *   outline in mm (counter-clockwise), the stem at the point farthest from it, and that distance in mm
+ * @returns {{outline: number[][], stem: {x: number, y: number}, stemRadius: number, notes: string[],
+ *   inset: (distance: number) => {outer, holes}[], cavity: (wall: number, bossRadius: number) => {outer, holes}[]}}
+ *   outline in mm (counter-clockwise), the stem at the point farthest from it, and that distance in mm; `inset`
+ *   erodes the grown silhouette by `distance` mm, `cavity` also removes the boss disc around the stem (both in mm,
+ *   outer rings CCW, holes CW)
  */
 export function traceOutline({ image, frame, keycap }) {
     const { data, width, height } = image;
@@ -124,5 +129,67 @@ export function traceOutline({ image, frame, keycap }) {
     const stem = { x: grid.left + pole.x * cell, y: grid.top - pole.y * cell };
     const stemRadius = Math.max(0, pole.r - 0.5) * cell;
 
-    return { outline, stem, stemRadius, notes };
+    // 5. Insets and the hollow cap's cavity, from the same grown mask. The boss removal clears every cell whose
+    // centre is within the radius plus half a cell diagonal, so the solid boss covers the whole disc.
+    const insetMask = (distance) => erode(grown, w, h, distance / cell);
+    const inset = (distance) => maskPolygons(insetMask(distance), w, h, grid);
+    const cavity = (wall, bossRadius) => {
+        const mask = insetMask(wall);
+        const reach = bossRadius / cell + Math.SQRT1_2;
+        const sx = pole.x - 0.5;
+        const sy = pole.y - 0.5;
+        for (let y = Math.max(0, Math.floor(sy - reach)); y <= Math.min(h - 1, Math.ceil(sy + reach)); y++) {
+            for (let x = Math.max(0, Math.floor(sx - reach)); x <= Math.min(w - 1, Math.ceil(sx + reach)); x++) {
+                if ((x - sx) ** 2 + (y - sy) ** 2 <= reach * reach) mask[y * w + x] = 0;
+            }
+        }
+
+        return maskPolygons(mask, w, h, grid);
+    };
+
+    return { outline, stem, stemRadius, notes, inset, cavity };
+}
+
+/**
+ * Clear one cell of every diagonal-only contact (a 2 x 2 block with exactly two set cells on a diagonal), so traced
+ * rings never share a corner point. Changes the mask in place; only removes cells.
+ */
+function separateDiagonals(mask, width, height) {
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (let y = 0; y + 1 < height; y++) {
+            for (let x = 0; x + 1 < width; x++) {
+                const i = y * width + x;
+                const a = mask[i];
+                const b = mask[i + 1];
+                const c = mask[i + width];
+                const d = mask[i + width + 1];
+                if (a && d && !b && !c) {
+                    mask[i + width + 1] = 0;
+                    changed = true;
+                } else if (b && c && !a && !d) {
+                    mask[i + width] = 0;
+                    changed = true;
+                }
+            }
+        }
+    }
+}
+
+/** The set cells of a mask as mm polygons (outer CCW, holes CW), simplified, without pieces under 4 mm². */
+function maskPolygons(mask, width, height, grid) {
+    separateDiagonals(mask, width, height);
+    const pieces = [];
+    for (const { outer, holes } of toMm(traceLabel(mask, width, height, 1), grid)) {
+        const ring = ensureCcw(simplifyRing(outer, SIMPLIFY_MM));
+        const islands = holes.map((hole) => {
+            const simple = simplifyRing(hole, SIMPLIFY_MM);
+            return signedArea(simple) > 0 ? simple.reverse() : simple;
+        });
+        const area = signedArea(ring) + islands.reduce((sum, hole) => sum + signedArea(hole), 0);
+        if (ring.length >= 3 && area >= MIN_PIECE_MM2) pieces.push({ outer: ring, holes: islands.filter((hole) => hole.length >= 3) });
+    }
+
+    return pieces;
 }

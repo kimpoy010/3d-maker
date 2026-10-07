@@ -126,7 +126,7 @@ it('refuses a body file outside the bodies folder', function () {
     Log::shouldHaveReceived('critical')->once();
 });
 
-it('builds a generator keycap body with a circle base shape and a Body part', function () {
+it('builds a generator keycap body with a circle base shape and a Cap part', function () {
     $this->clicker->body->update(['model_files' => [], 'config' => ClickerBody::sampleConfig()]);
     $this->clicker->update(['settings' => [
         'colors' => [
@@ -150,7 +150,7 @@ it('builds a generator keycap body with a circle base shape and a Body part', fu
     $zip->close();
     @unlink($file);
 
-    expect($model)->toContain('Body');
+    expect($model)->toContain('name="Cap"');
 })->skip(fn () => ! str_starts_with(trim((string) @shell_exec('node --version 2>&1')), 'v'), 'Node is not installed.');
 
 it('builds real print files with node', function () {

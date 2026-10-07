@@ -31,7 +31,7 @@ for (const [name, { outline: make, stem }] of Object.entries(cases)) {
         const area = Math.abs(signedArea(outline));
 
         assert.equal(body.kind, 'body');
-        assert.equal(body.name, 'Body');
+        assert.equal(body.name, 'Cap');
         assert.equal(body.hex, '#9CA3AF');
         assert.equal(body.shells, undefined);
         assert.ok(isClosedManifold(body), 'manifold');
@@ -83,7 +83,11 @@ for (const [name, { outline: make, stem }] of Object.entries(cases)) {
         const { span, arm } = keycap.stem;
         const has = (x, y, z) => {
             for (let i = 0; i < body.positions.length; i += 3) {
-                if (Math.abs(body.positions[i] - x) < 1e-4 && Math.abs(body.positions[i + 1] - y) < 1e-4 && Math.abs(body.positions[i + 2] - z) < 1e-4) {
+                if (
+                    Math.abs(body.positions[i] - x) < 1e-4 &&
+                    Math.abs(body.positions[i + 1] - y) < 1e-4 &&
+                    Math.abs(body.positions[i + 2] - z) < 1e-4
+                ) {
                     return true;
                 }
             }

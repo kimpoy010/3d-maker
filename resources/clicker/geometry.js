@@ -1,5 +1,5 @@
 import { hexToRgb } from './color.js';
-import { buildKeycapBody, circleOutline, keycapConfig, squareOutline, stemClearance } from './keycap.js';
+import { buildHollowCapBody, buildKeycapBody, circleOutline, hollowCavity, keycapConfig, squareOutline, stemClearance } from './keycap.js';
 import { extrudePolygons, toMm } from './mesh.js';
 import { BG, applyCapMask, buildLabels, cleanSpecks, downscale, paintOutline, removeBackground, thinResidue } from './raster.js';
 import { traceOutline } from './trace-outline.js';
@@ -13,6 +13,8 @@ export const MAX_SIDE = { preview: 1024, final: 2048 };
 export const BASE_SHAPES = ['square', 'circle', 'trace'];
 
 export const STEM_BLOCKER = 'This shape is too thin to hold the switch stem. Make the artwork larger or choose Square or Circle.';
+
+export const HOLLOW_NOTE = 'The shape is too small for a hollow cap, so the cap is solid.';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -69,7 +71,8 @@ export function prepareArtwork(image, settings, body) {
  * @param {object} body {cap, artwork_area, max_layer_height, min_feature}, or a generated keycap body with
  *   {generator: 'mx_keycap', keycap, max_layer_height, min_feature}; then settings.base_shape picks the outline
  * @param {'preview'|'final'} quality
- * @returns analysis; for generated bodies `cap` = {outline, stem} and `blockers` lists reasons the cap cannot be built
+ * @returns analysis; for generated bodies `cap` = {outline, stem}, plus `cavity` (hollow cap polygons, possibly
+ *   empty) when settings.hollow_cap is true, and `blockers` lists reasons the cap cannot be built
  */
 export function analyzeArtwork(source, settings, body, quality = 'preview') {
     const image = prepareArtwork(source, settings, body);
@@ -144,13 +147,18 @@ export function analyzeArtwork(source, settings, body, quality = 'preview') {
 
     let keycapShape;
     const blockers = [];
+    let traced = null;
     if (generated && shape === 'trace') {
-        const traced = traceOutline({ image: scaled, frame, keycap });
+        traced = traceOutline({ image: scaled, frame, keycap });
         keycapShape = { outline: traced.outline, stem: traced.stem };
         notes.push(...traced.notes);
         if (traced.stemRadius < stemClearance(keycap)) blockers.push(STEM_BLOCKER);
     } else if (generated) {
         keycapShape = { outline: shape === 'circle' ? circleOutline(keycap) : squareOutline(keycap), stem: { x: 0, y: 0 } };
+    }
+    if (generated && settings.hollow_cap === true) {
+        keycapShape.cavity = hollowCavity({ shape, ...keycapShape, keycap, trace: traced });
+        if (keycapShape.cavity.length === 0) notes.push(HOLLOW_NOTE);
     }
 
     return { palette, polygons, outlineIndex, notes, mmPerPx, frame, cap: keycapShape, blockers };
@@ -190,7 +198,14 @@ export function buildParts(analysis, settings, body) {
         parts.push({ kind: 'outline', name: `Outline ${hex}`, hex, ...extrudePolygons(outline, top, top + tallest) });
     }
 
-    if (generated) parts.push(buildKeycapBody({ outline: analysis.cap.outline, stem: analysis.cap.stem, keycap }));
+    if (generated) {
+        const { outline: capOutline, stem, cavity } = analysis.cap;
+        // The cavity is only worked out when hollow_cap was on at analysis time; turning it off needs no re-analysis.
+        const hollow = settings.hollow_cap === true && cavity?.length > 0;
+        parts.push(
+            hollow ? buildHollowCapBody({ outline: capOutline, cavity, stem, keycap }) : buildKeycapBody({ outline: capOutline, stem, keycap }),
+        );
+    }
 
     return parts;
 }
