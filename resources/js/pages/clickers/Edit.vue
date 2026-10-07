@@ -4,7 +4,18 @@ import { Button } from '@/components/ui/button';
 import { usePolling } from '@/composables/usePolling';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { loadArtwork, loadArtworkFromUrl } from '@/lib/artwork';
-import { analyze, bodyProxy, extrude, paletteFor, type Analysis, type BodyConfig, type ClickerSettings, type Part, type Pixels } from '@/lib/clicker';
+import {
+    analyze,
+    bodyProxy,
+    extrude,
+    paletteFor,
+    type Analysis,
+    type BaseShape,
+    type BodyConfig,
+    type ClickerSettings,
+    type Part,
+    type Pixels,
+} from '@/lib/clicker';
 import { peso } from '@/lib/money';
 import type { BreadcrumbItem } from '@/types';
 import { Head, Link, useForm } from '@inertiajs/vue3';
@@ -26,13 +37,29 @@ type ClickerData = {
 
 const props = defineProps<{ clicker: ClickerData | null; bodies: Body[]; balance: number; unlock_cost: number; max_colors: number }>();
 
-const emptySettings = (): ClickerSettings => ({ colors: [], scale: 1, offset_x: 0, offset_y: 0, outline_mm: 0, outline_hex: '#111111' });
+const emptySettings = (): ClickerSettings => ({
+    colors: [],
+    scale: 1,
+    offset_x: 0,
+    offset_y: 0,
+    outline_mm: 0,
+    outline_hex: '#111111',
+    base_shape: 'square',
+});
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+// Designs saved before base shapes existed have no base_shape: they are square.
+const normalise = (saved: ClickerSettings): ClickerSettings => ({ ...emptySettings(), ...clone(saved) });
+
+const baseShapes: { value: BaseShape; label: string }[] = [
+    { value: 'square', label: 'Square' },
+    { value: 'circle', label: 'Circle' },
+    { value: 'trace', label: 'Trace' },
+];
 
 // ---- editable state
 const name = ref(props.clicker?.name ?? 'My clicker');
 const bodyId = ref<number>(props.clicker?.body_id ?? props.bodies[0]?.id ?? 0);
-const settings = ref<ClickerSettings>(props.clicker ? clone(props.clicker.settings) : emptySettings());
+const settings = ref<ClickerSettings>(props.clicker ? normalise(props.clicker.settings) : emptySettings());
 const colorCount = ref(settings.value.colors.length || 4);
 const pixels = shallowRef<Pixels | null>(null);
 const artworkBlob = shallowRef<Blob | null>(null); // only set when the user picked a new file
@@ -40,11 +67,21 @@ const analysis = shallowRef<Analysis | null>(null);
 const parts = shallowRef<Part[]>([]);
 const notes = ref<string[]>([]);
 const loadError = ref('');
+const blockers = ref<string[]>([]);
+const buildError = ref('');
 const viewer = ref<InstanceType<typeof ModelViewer> | null>(null);
 
 const body = computed(() => props.bodies.find((b) => b.id === bodyId.value) ?? props.bodies[0]);
 const editable = computed(() => props.clicker === null || props.clicker.editable);
-const previewParts = computed<Part[]>(() => (body.value ? [bodyProxy(body.value.config.cap), ...parts.value] : []));
+const isGenerated = computed(() => !!body.value?.config.generator);
+// A generated keycap body is one of the parts; a legacy body is shown as a grey slab behind the artwork.
+const previewParts = computed<Part[]>(() => {
+    if (!body.value) return [];
+    return isGenerated.value ? parts.value : [bodyProxy(body.value.config.cap), ...parts.value];
+});
+// With Trace the offset moves the whole keycap, so it changes nothing relative to the cap (the saved values are kept).
+const showPosition = computed(() => !(isGenerated.value && settings.value.base_shape === 'trace'));
+const steps = computed(() => (isGenerated.value ? { colours: 4, size: 5 } : { colours: 3, size: 4 }));
 
 // ---- the preview pipeline: a slow half (colours, tracing) and a fast half (heights)
 const analysisKey = computed(() =>
@@ -54,6 +91,7 @@ const analysisKey = computed(() =>
         settings.value.offset_x,
         settings.value.offset_y,
         settings.value.outline_mm,
+        settings.value.base_shape,
         settings.value.colors.map((c) => [c.hex, c.enabled]),
     ]),
 );
@@ -61,11 +99,18 @@ const heightKey = computed(() => JSON.stringify([settings.value.colors.map((c) =
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 function rebuild() {
-    if (!analysis.value || !body.value) {
+    buildError.value = '';
+    // Blockers are checked first: buildParts would throw for them.
+    if (!analysis.value || !body.value || analysis.value.blockers.length > 0) {
         parts.value = [];
         return;
     }
-    parts.value = extrude(analysis.value, settings.value, body.value.config);
+    try {
+        parts.value = extrude(analysis.value, settings.value, body.value.config);
+    } catch (error) {
+        parts.value = [];
+        buildError.value = error instanceof Error ? error.message : 'The preview could not be built.';
+    }
 }
 
 function runAnalysis() {
@@ -73,14 +118,20 @@ function runAnalysis() {
     if (!pixels.value || !body.value || settings.value.colors.length === 0) {
         analysis.value = null;
         notes.value = [];
+        blockers.value = [];
+        buildError.value = '';
         parts.value = [];
         return;
     }
     try {
         analysis.value = analyze(pixels.value, settings.value, body.value.config);
         notes.value = analysis.value.notes;
+        blockers.value = analysis.value.blockers ?? [];
         rebuild();
     } catch (error) {
+        analysis.value = null;
+        parts.value = [];
+        blockers.value = [];
         loadError.value = error instanceof Error ? error.message : 'The preview could not be built.';
     }
 }
@@ -166,7 +217,7 @@ const canSave = computed(
 function rebaseline(clicker: ClickerData) {
     name.value = clicker.name;
     bodyId.value = clicker.body_id;
-    settings.value = clone(clicker.settings);
+    settings.value = normalise(clicker.settings);
     colorCount.value = settings.value.colors.length;
     artworkBlob.value = null;
     savedKey.value = snapshotKey();
@@ -224,6 +275,7 @@ async function save() {
 // ---- paying, duplicating, deleting, downloading
 const unlockForm = useForm<Record<string, unknown>>({});
 const canUnlock = computed(() => !!props.clicker && !props.clicker.unlocked && ['draft', 'failed'].includes(props.clicker.status));
+const blocked = computed(() => blockers.value.length > 0);
 const affordable = computed(() => props.balance >= props.unlock_cost);
 const duplicating = ref(false);
 const busy = computed(() => saveForm.processing || saving.value || unlockForm.processing || duplicating.value);
@@ -325,8 +377,37 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                 </section>
 
                 <template v-if="pixels">
+                    <section v-if="isGenerated" class="space-y-2">
+                        <h2 class="text-sm font-medium">3. Base shape</h2>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button
+                                v-for="shape in baseShapes"
+                                :key="shape.value"
+                                type="button"
+                                class="flex flex-col items-center gap-1 rounded-xl border p-3 text-xs"
+                                :class="settings.base_shape === shape.value ? 'border-primary ring-2 ring-primary/30' : 'hover:bg-muted/40'"
+                                :aria-pressed="settings.base_shape === shape.value"
+                                @click="settings.base_shape = shape.value"
+                            >
+                                <svg viewBox="0 0 24 24" class="size-7" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                    <rect v-if="shape.value === 'square'" x="4" y="4" width="16" height="16" rx="3" />
+                                    <circle v-else-if="shape.value === 'circle'" cx="12" cy="12" r="8" />
+                                    <path v-else d="M5 15 C3 9 8 4 13 5 C19 6 21 12 17 17 C14 21 7 20 5 15 Z" stroke-dasharray="3 2" />
+                                </svg>
+                                {{ shape.label }}
+                            </button>
+                        </div>
+                        <p class="text-xs text-muted-foreground">
+                            {{
+                                settings.base_shape === 'trace'
+                                    ? 'The keycap follows the outline of your artwork.'
+                                    : 'The artwork sits on top of a keycap with this outline.'
+                            }}
+                        </p>
+                    </section>
+
                     <section class="space-y-3">
-                        <h2 class="text-sm font-medium">3. Colours</h2>
+                        <h2 class="text-sm font-medium">{{ steps.colours }}. Colours</h2>
                         <div class="flex flex-wrap items-center gap-2 text-sm">
                             <span class="text-muted-foreground">Number of colours</span>
                             <button
@@ -374,20 +455,20 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                     </section>
 
                     <section class="space-y-3">
-                        <h2 class="text-sm font-medium">4. Size, position and outline</h2>
+                        <h2 class="text-sm font-medium">{{ steps.size }}. {{ showPosition ? 'Size, position and outline' : 'Size and outline' }}</h2>
                         <label class="block text-sm">
                             <span class="flex justify-between"
                                 ><span>Artwork size</span><span class="text-muted-foreground">{{ Math.round(settings.scale * 100) }}%</span></span
                             >
                             <input v-model.number="settings.scale" type="range" min="0.1" max="1" step="0.01" class="w-full" />
                         </label>
-                        <label class="block text-sm">
+                        <label v-if="showPosition" class="block text-sm">
                             <span class="flex justify-between"
                                 ><span>Move left / right</span><span class="text-muted-foreground">{{ settings.offset_x }} mm</span></span
                             >
                             <input v-model.number="settings.offset_x" type="range" min="-20" max="20" step="0.5" class="w-full" />
                         </label>
-                        <label class="block text-sm">
+                        <label v-if="showPosition" class="block text-sm">
                             <span class="flex justify-between"
                                 ><span>Move up / down</span><span class="text-muted-foreground">{{ settings.offset_y }} mm</span></span
                             >
@@ -415,6 +496,18 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
             <!-- preview and actions -->
             <div class="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
                 <ModelViewer ref="viewer" :parts="previewParts" default-look="textured" :auto-rotate="false" />
+
+                <section
+                    v-if="blockers.length || buildError"
+                    class="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-200"
+                    role="alert"
+                    aria-label="Cannot build this keycap"
+                >
+                    <ul class="list-inside list-disc space-y-1">
+                        <li v-for="b in blockers" :key="b">{{ b }}</li>
+                        <li v-if="buildError">{{ buildError }}</li>
+                    </ul>
+                </section>
 
                 <section
                     v-if="notes.length"
@@ -460,7 +553,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                         <p v-if="unlockForm.errors.unlock" class="text-sm text-destructive" role="alert">{{ unlockForm.errors.unlock }}</p>
                         <p class="text-xs text-muted-foreground">Your balance: {{ peso(balance) }}</p>
                         <p v-if="dirty" class="text-xs text-muted-foreground">Save your changes first, so the files match what you see.</p>
-                        <Button v-if="affordable" :disabled="busy || dirty" @click="unlock">
+                        <Button v-if="affordable" :disabled="busy || dirty || blocked" @click="unlock">
                             {{ unlockForm.processing ? 'Unlocking…' : `Unlock downloads (${peso(unlock_cost)})` }}
                         </Button>
                         <Button v-else as-child><Link href="/credits">Add balance to download</Link></Button>

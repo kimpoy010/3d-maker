@@ -11,7 +11,10 @@ export type ClickerSettings = {
     offset_y: number;
     outline_mm: number;
     outline_hex: string;
+    base_shape: BaseShape;
 };
+
+export type BaseShape = 'square' | 'circle' | 'trace';
 
 export type BodyConfig = {
     cap: { shape: 'rect' | 'rounded' | 'circle'; width: number; height: number; corner_radius: number; top_z: number; inset: number };
@@ -19,6 +22,9 @@ export type BodyConfig = {
     max_layer_height: number;
     min_feature: number;
     switch?: string;
+    /** Set for bodies whose mesh is generated in the browser (a Cherry MX keycap). */
+    generator?: string;
+    keycap?: Record<string, number | string>;
 };
 
 /** RGBA pixels, as from canvas getImageData(). */
@@ -27,7 +33,7 @@ export type Pixels = { data: Uint8ClampedArray; width: number; height: number };
 export type Part = { kind: 'colour' | 'outline' | 'body'; name: string; hex: string; positions: Float32Array; indices: Uint32Array };
 
 /** The slow half of the pipeline. Opaque to the editor except for the print notes. */
-export type Analysis = { notes: string[] };
+export type Analysis = { notes: string[]; blockers: string[] };
 
 export const analyze = (image: Pixels, settings: ClickerSettings, body: BodyConfig): Analysis =>
     analyzeArtwork(image, settings, body, 'preview') as unknown as Analysis;
