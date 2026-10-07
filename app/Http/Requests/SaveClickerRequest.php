@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\ClickerBody;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\UploadedFile;
@@ -64,6 +65,8 @@ class SaveClickerRequest extends FormRequest
     public function settings(): array
     {
         $settings = $this->validated('settings');
+        // A missing background setting means "on" for a generated keycap body and "off" for a legacy one.
+        $generated = ! empty(ClickerBody::find($this->validated('clicker_body_id'))?->config['generator'] ?? null);
 
         return [
             'colors' => array_values(array_map(fn (array $color) => [
@@ -78,7 +81,7 @@ class SaveClickerRequest extends FormRequest
             'outline_hex' => strtoupper($settings['outline_hex']),
             'base_shape' => $settings['base_shape'] ?? 'square',
             'hollow_cap' => filter_var($settings['hollow_cap'] ?? false, FILTER_VALIDATE_BOOLEAN),
-            'remove_background' => filter_var($settings['remove_background'] ?? true, FILTER_VALIDATE_BOOLEAN),
+            'remove_background' => filter_var($settings['remove_background'] ?? $generated, FILTER_VALIDATE_BOOLEAN),
         ];
     }
 

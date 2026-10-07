@@ -52,10 +52,12 @@ const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 // Designs saved before base shapes existed have no base_shape: they are square. Designs saved before the base and
 // background options have neither: the cap is solid, and the background is removed for a generated keycap body only
 // (a legacy body is built from the artwork as it is, so the preview matches the build).
+const isGeneratedBody = (candidate: { config: BodyConfig } | undefined) => !!candidate?.config.generator;
 const normalise = (saved: ClickerSettings, forBody: number): ClickerSettings => {
     const merged = { ...emptySettings(), ...clone(saved) };
-    const generated = !!props.bodies.find((b) => b.id === forBody)?.config.generator;
-    if (saved.remove_background === undefined || saved.remove_background === null) merged.remove_background = generated;
+    if (saved.remove_background === undefined || saved.remove_background === null) {
+        merged.remove_background = isGeneratedBody(props.bodies.find((b) => b.id === forBody));
+    }
     merged.hollow_cap = !!merged.hollow_cap;
     merged.remove_background = !!merged.remove_background;
 
@@ -78,7 +80,8 @@ const name = ref(props.clicker?.name ?? 'My clicker');
 const bodyId = ref<number>(props.clicker?.body_id ?? props.bodies[0]?.id ?? 0);
 const settings = ref<ClickerSettings>(props.clicker ? normalise(props.clicker.settings, props.clicker.body_id) : emptySettings());
 // A new design starts for the first body: a legacy body does not remove the background unless asked.
-if (!props.clicker) settings.value.remove_background = !!props.bodies[0]?.config.generator;
+if (!props.clicker) settings.value.remove_background = isGeneratedBody(props.bodies[0]);
+let shownBodyId = bodyId.value; // the body the radio group showed before the latest choice
 const colorCount = ref(settings.value.colors.length || 4);
 const pixels = shallowRef<Pixels | null>(null);
 const artworkBlob = shallowRef<Blob | null>(null); // only set when the user picked a new file
@@ -92,7 +95,7 @@ const viewer = ref<InstanceType<typeof ModelViewer> | null>(null);
 
 const body = computed(() => props.bodies.find((b) => b.id === bodyId.value) ?? props.bodies[0]);
 const editable = computed(() => props.clicker === null || props.clicker.editable);
-const isGenerated = computed(() => !!body.value?.config.generator);
+const isGenerated = computed(() => isGeneratedBody(body.value));
 // A generated keycap body is one of the parts; a legacy body is shown as a grey slab behind the artwork.
 const previewParts = computed<Part[]>(() => {
     if (!body.value) return [];
@@ -205,8 +208,11 @@ function setColorCount(count: number) {
 }
 
 // Another body: background removal is on by default for a generated keycap body and off for a legacy one.
+// It only changes when the kind of body changes, not when switching between two generated bodies.
 function chooseBody(chosen: Body) {
-    settings.value.remove_background = !!chosen.config.generator;
+    const previous = props.bodies.find((b) => b.id === shownBodyId);
+    shownBodyId = chosen.id;
+    if (isGeneratedBody(previous) !== isGeneratedBody(chosen)) settings.value.remove_background = isGeneratedBody(chosen);
 }
 
 function removeColor(index: number) {
@@ -250,6 +256,7 @@ const canSave = computed(
 function rebaseline(clicker: ClickerData) {
     name.value = clicker.name;
     bodyId.value = clicker.body_id;
+    shownBodyId = clicker.body_id;
     settings.value = normalise(clicker.settings, clicker.body_id);
     colorCount.value = settings.value.colors.length;
     artworkBlob.value = null;
@@ -451,13 +458,14 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                         <label
                             v-for="option in switches"
                             :key="option.key"
-                            class="flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm focus-within:ring-2 focus-within:ring-ring"
+                            class="flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring"
                         >
                             <input
                                 v-model="settings[option.key]"
                                 type="checkbox"
                                 role="switch"
                                 class="peer sr-only"
+                                :aria-labelledby="`${option.key}-label`"
                                 :aria-describedby="`${option.key}-hint`"
                             />
                             <span
@@ -465,7 +473,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                 aria-hidden="true"
                             ></span>
                             <span>
-                                <span class="block font-medium">{{ option.label }}</span>
+                                <span :id="`${option.key}-label`" class="block font-medium">{{ option.label }}</span>
                                 <span :id="`${option.key}-hint`" class="block text-xs text-muted-foreground">{{ option.hint }}</span>
                             </span>
                         </label>

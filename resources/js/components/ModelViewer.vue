@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Part } from '@/lib/clicker';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 // Either `src` (a GLB to download) or `parts` (meshes built in the browser, millimetres, Z up).
 const props = withDefaults(defineProps<{ src?: string; parts?: Part[]; autoRotate?: boolean; defaultLook?: 'textured' | 'clay' }>(), {
@@ -43,9 +43,10 @@ function makeDirectional(color: number, intensity: number, x: number, y: number,
 function applyPreset() {
     if (!scene) return;
     lights.forEach((l) => scene!.remove(l));
-    lights = preset.value === 'studio'
-        ? [new THREE.HemisphereLight(0xffffff, 0x666677, 1.1), makeDirectional(0xffffff, 2.2, 3, 5, 4)]
-        : [new THREE.HemisphereLight(0xffffff, 0xddddee, 2.2), makeDirectional(0xfff2e0, 0.6, -2, 3, 2)];
+    lights =
+        preset.value === 'studio'
+            ? [new THREE.HemisphereLight(0xffffff, 0x666677, 1.1), makeDirectional(0xffffff, 2.2, 3, 5, 4)]
+            : [new THREE.HemisphereLight(0xffffff, 0xddddee, 2.2), makeDirectional(0xfff2e0, 0.6, -2, 3, 2)];
     lights.forEach((l) => scene!.add(l));
 }
 
@@ -77,8 +78,12 @@ function frameModel(object: THREE.Object3D, elevated = false) {
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
     camera!.near = maxDim / 100;
     camera!.far = maxDim * 100;
-    if (elevated) camera!.position.set(0, maxDim * 1.4, maxDim * 1.6);
-    else camera!.position.set(0, maxDim * 0.3, maxDim * 2.2);
+    if (elevated) {
+        // Parts mode shows the cap with the base below it: pull back so the whole clicker has room around it.
+        const pullBack = 1.3;
+        camera!.position.set(0, maxDim * 1.4 * pullBack, maxDim * 1.6 * pullBack);
+        camera!.far = camera!.position.length() * 100;
+    } else camera!.position.set(0, maxDim * 0.3, maxDim * 2.2);
     camera!.updateProjectionMatrix();
     controls!.target.set(0, 0, 0);
     controls!.update();
@@ -154,7 +159,10 @@ function showParts(list: Part[]) {
     applyLook();
 
     // Key the framing on the keycap/slab body (the last part of a generated body), not on a colour layer.
-    const bodyIndex = Math.max(0, list.findIndex((p) => p.kind === 'body'));
+    const bodyIndex = Math.max(
+        0,
+        list.findIndex((p) => p.kind === 'body'),
+    );
     const first = new THREE.Box3().setFromObject(group.children[bodyIndex]).getSize(new THREE.Vector3());
     const sizeKey = `${first.x.toFixed(2)},${first.y.toFixed(2)},${first.z.toFixed(2)}`;
 
@@ -223,12 +231,18 @@ onMounted(() => {
     tick();
 });
 
-watch(() => props.src, (url) => {
-    if (url) load(url);
-});
-watch(() => props.parts, (list) => {
-    if (list) showParts(list);
-});
+watch(
+    () => props.src,
+    (url) => {
+        if (url) load(url);
+    },
+);
+watch(
+    () => props.parts,
+    (list) => {
+        if (list) showParts(list);
+    },
+);
 watch(preset, applyPreset);
 watch(look, applyLook);
 watch(rotating, (value) => {
@@ -253,9 +267,7 @@ onBeforeUnmount(() => {
     <div class="relative aspect-square w-full overflow-hidden rounded-xl border bg-muted/40">
         <div ref="container" class="absolute inset-0" />
 
-        <div v-if="state === 'loading'" class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
-            Loading model…
-        </div>
+        <div v-if="state === 'loading'" class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading model…</div>
         <div v-else-if="state === 'error'" class="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-destructive">
             This model could not be loaded.
         </div>
@@ -271,7 +283,11 @@ onBeforeUnmount(() => {
             >
                 Light: {{ preset === 'studio' ? 'Studio' : 'Soft' }}
             </button>
-            <button type="button" class="rounded-md border bg-background/80 px-2 py-1 backdrop-blur" @click="look = look === 'clay' ? 'textured' : 'clay'">
+            <button
+                type="button"
+                class="rounded-md border bg-background/80 px-2 py-1 backdrop-blur"
+                @click="look = look === 'clay' ? 'textured' : 'clay'"
+            >
                 View: {{ look === 'clay' ? 'Clay' : 'Textured' }}
             </button>
         </div>

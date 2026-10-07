@@ -21,8 +21,9 @@ class ClickerResource extends JsonResource
             'name' => $this->name,
             'status' => $this->status->value,
             'error' => $this->build_error,
-            // Designs saved before these two settings existed get their defaults.
-            'settings' => array_replace(['hollow_cap' => false, 'remove_background' => true], $this->settings ?? []),
+            // Designs saved before hollow caps existed get a solid cap. remove_background is left absent when it was never
+            // saved: the editor fills it per body type (on for a generated keycap, off for a legacy body).
+            'settings' => array_replace(['hollow_cap' => false], $this->settings ?? []),
             'body_id' => $this->clicker_body_id,
             'unlocked' => $this->isUnlocked(),
             'editable' => ! $this->isUnlocked() && $this->status !== ClickerStatus::Building,

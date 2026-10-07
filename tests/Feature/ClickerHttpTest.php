@@ -156,16 +156,37 @@ it('stores the hollow cap and background settings as real booleans', function (m
     'strings' => ['1', '0', true, false],
 ]);
 
-it('defaults missing hollow cap and background settings', function () {
+it('defaults a missing background setting by body type and a missing hollow cap to off', function (bool $keycap, bool $expected) {
+    $body = $keycap ? ClickerBody::factory()->keycap()->create() : $this->body;
     $settings = $this->settings;
     unset($settings['hollow_cap'], $settings['remove_background']);
 
-    $this->actingAs($this->user)->post('/clickers', ($this->payload)(['settings' => $settings]))->assertSessionHasNoErrors();
+    $this->actingAs($this->user)
+        ->post('/clickers', ($this->payload)(['clicker_body_id' => $body->id, 'settings' => $settings]))
+        ->assertSessionHasNoErrors();
 
     $stored = Clicker::firstOrFail()->settings;
     expect($stored['hollow_cap'])->toBeFalse()
-        ->and($stored['remove_background'])->toBeTrue();
-});
+        ->and($stored['remove_background'])->toBe($expected);
+})->with([
+    'keycap body' => [true, true],
+    'legacy body' => [false, false],
+]);
+
+it('keeps an explicit background setting on either body type', function (bool $keycap, bool $value) {
+    $body = $keycap ? ClickerBody::factory()->keycap()->create() : $this->body;
+
+    $this->actingAs($this->user)
+        ->post('/clickers', ($this->payload)(['clicker_body_id' => $body->id, 'settings' => array_replace($this->settings, ['remove_background' => $value])]))
+        ->assertSessionHasNoErrors();
+
+    expect(Clicker::firstOrFail()->settings['remove_background'])->toBe($value);
+})->with([
+    'keycap on' => [true, true],
+    'keycap off' => [true, false],
+    'legacy on' => [false, true],
+    'legacy off' => [false, false],
+]);
 
 it('rejects a non-boolean hollow cap or background setting', function (string $field) {
     $this->actingAs($this->user)
@@ -180,7 +201,7 @@ it('gives an old design without the new settings their defaults in the editor', 
 
     $this->actingAs($this->user)->get("/clickers/{$clicker->id}")->assertInertia(fn (Assert $page) => $page
         ->where('clicker.settings.hollow_cap', false)
-        ->where('clicker.settings.remove_background', true)
+        ->missing('clicker.settings.remove_background')
         ->where('clicker.settings.scale', $clicker->settings['scale']));
 });
 
