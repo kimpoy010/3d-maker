@@ -279,7 +279,11 @@ const unlockForm = useForm<Record<string, unknown>>({});
 const canUnlock = computed(() => !!props.clicker && !props.clicker.unlocked && ['draft', 'failed'].includes(props.clicker.status));
 // A generated body can only be checked for blockers once analysed: keep Unlock off until the first analysis exists.
 const awaitingAnalysis = computed(() => isGenerated.value && analysis.value === null && (pixels.value !== null || !!props.clicker?.urls.artwork));
-const blocked = computed(() => blockers.value.length > 0 || awaitingAnalysis.value);
+// The build fails when no colour lands on the cap (the body alone is not printable artwork): flag it before the user pays.
+const noPrintableColour = computed(
+    () => isGenerated.value && analysis.value !== null && blockers.value.length === 0 && !buildError.value && !parts.value.some((p) => p.kind !== 'body'),
+);
+const blocked = computed(() => blockers.value.length > 0 || !!buildError.value || noPrintableColour.value || awaitingAnalysis.value);
 const affordable = computed(() => props.balance >= props.unlock_cost);
 const duplicating = ref(false);
 const busy = computed(() => saveForm.processing || saving.value || unlockForm.processing || duplicating.value);
@@ -502,7 +506,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                 <ModelViewer ref="viewer" :parts="previewParts" default-look="textured" :auto-rotate="false" />
 
                 <section
-                    v-if="blockers.length || buildError"
+                    v-if="blockers.length || buildError || noPrintableColour"
                     class="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-200"
                     role="alert"
                     aria-label="Cannot build this keycap"
@@ -510,6 +514,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                     <ul class="list-inside list-disc space-y-1">
                         <li v-for="b in blockers" :key="b">{{ b }}</li>
                         <li v-if="buildError">{{ buildError }}</li>
+                        <li v-if="noPrintableColour">None of the colours appear on the cap. Make the artwork larger or move it onto the cap.</li>
                     </ul>
                 </section>
 

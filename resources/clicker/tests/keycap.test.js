@@ -23,25 +23,44 @@ const cases = {
 };
 
 for (const [name, { outline: make, stem }] of Object.entries(cases)) {
-    test(`keycap body (${name}) is built from two closed shells`, () => {
+    test(`keycap body (${name}) is one closed manifold stepped shell`, () => {
         const outline = make();
         const keycap = keycapConfig({});
         const body = buildKeycapBody({ outline, stem, keycap });
         const { span, arm } = keycap.stem;
-        const depth = keycap.socket_depth + 0.4;
         const area = Math.abs(signedArea(outline));
-        const [shellA, shellB] = body.shells;
 
         assert.equal(body.kind, 'body');
         assert.equal(body.name, 'Body');
         assert.equal(body.hex, '#9CA3AF');
-        assert.ok(isClosedManifold(shellA), 'shell A manifold');
-        assert.ok(isClosedManifold(shellB), 'shell B manifold');
+        assert.equal(body.shells, undefined);
+        assert.ok(isClosedManifold(body), 'manifold');
 
         const crossArea = 2 * span * arm - arm * arm;
-        near(meshVolume(shellA), (area - crossArea) * depth, 0.005, 'shell A volume');
-        near(meshVolume(shellB), area * (keycap.height - keycap.socket_depth), 0.005, 'shell B volume');
-        near(meshVolume(body), meshVolume(shellA) + meshVolume(shellB), 1e-6, 'merged volume');
+        near(meshVolume(body), area * keycap.height - crossArea * keycap.socket_depth, 0.005, 'volume');
+    });
+
+    test(`keycap body (${name}) is solid only above the socket ceiling at the stem centre`, () => {
+        const keycap = keycapConfig({});
+        const body = buildKeycapBody({ outline: make(), stem, keycap });
+        const [px, py] = [stem.x + 0.011, stem.y + 0.007];
+        const hits = [];
+        const v = (i) => [body.positions[3 * i], body.positions[3 * i + 1], body.positions[3 * i + 2]];
+
+        for (let t = 0; t < body.indices.length; t += 3) {
+            const [a, b, c] = [v(body.indices[t]), v(body.indices[t + 1]), v(body.indices[t + 2])];
+            const det = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+            if (Math.abs(det) < 1e-12) continue; // vertical wall
+            const u = ((px - a[0]) * (c[1] - a[1]) - (py - a[1]) * (c[0] - a[0])) / det;
+            const w = ((b[0] - a[0]) * (py - a[1]) - (b[1] - a[1]) * (px - a[0])) / det;
+            if (u < 0 || w < 0 || u + w > 1) continue;
+            hits.push({ z: a[2] + u * (b[2] - a[2]) + w * (c[2] - a[2]), up: det > 0 });
+        }
+        hits.sort((p, q) => p.z - q.z);
+
+        assert.equal(hits.length, 2, 'a vertical ray crosses the surface twice');
+        assert.ok(Math.abs(hits[0].z - keycap.socket_depth) < 1e-4 && !hits[0].up, 'enters at the socket ceiling');
+        assert.ok(Math.abs(hits[1].z - keycap.height) < 1e-4 && hits[1].up, 'leaves at the top');
     });
 
     test(`keycap body (${name}) spans the outline and the full height`, () => {
@@ -58,22 +77,26 @@ for (const [name, { outline: make, stem }] of Object.entries(cases)) {
         assert.ok(Math.abs(maxY - Math.max(...outline.map((p) => p[1]))) < 1e-4);
     });
 
-    test(`keycap body (${name}) shows the cross hole`, () => {
+    test(`keycap body (${name}) shows the cross socket at the bottom and at the ceiling`, () => {
         const keycap = keycapConfig({});
         const body = buildKeycapBody({ outline: make(), stem, keycap });
         const { span, arm } = keycap.stem;
-        const has = (x, y) => {
+        const has = (x, y, z) => {
             for (let i = 0; i < body.positions.length; i += 3) {
-                if (Math.abs(body.positions[i] - x) < 1e-4 && Math.abs(body.positions[i + 1] - y) < 1e-4) return true;
+                if (Math.abs(body.positions[i] - x) < 1e-4 && Math.abs(body.positions[i + 1] - y) < 1e-4 && Math.abs(body.positions[i + 2] - z) < 1e-4) {
+                    return true;
+                }
             }
 
             return false;
         };
 
-        assert.ok(has(stem.x + span / 2, stem.y - arm / 2));
-        assert.ok(has(stem.x - span / 2, stem.y + arm / 2));
-        assert.ok(has(stem.x + arm / 2, stem.y + span / 2));
-        assert.ok(has(stem.x - arm / 2, stem.y - span / 2));
+        for (const z of [0, keycap.socket_depth]) {
+            assert.ok(has(stem.x + span / 2, stem.y - arm / 2, z));
+            assert.ok(has(stem.x - span / 2, stem.y + arm / 2, z));
+            assert.ok(has(stem.x + arm / 2, stem.y + span / 2, z));
+            assert.ok(has(stem.x - arm / 2, stem.y - span / 2, z));
+        }
     });
 }
 

@@ -40,6 +40,8 @@ class ClickerBody extends Model
      */
     public static function sampleConfig(): array
     {
+        // `cap` and `artwork_area` are informational for generator bodies: the geometry derives them from `keycap`
+        // and the chosen base shape, so they go stale if `keycap.size` (or `rim`) is edited.
         return [
             'generator' => 'mx_keycap',
             'cap' => ['shape' => 'rounded', 'width' => 30, 'height' => 30, 'corner_radius' => 4, 'top_z' => 8, 'inset' => 0],

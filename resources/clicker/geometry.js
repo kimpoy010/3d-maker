@@ -34,7 +34,7 @@ function keycapLayout(keycap, shape) {
             height: size,
             corner_radius: keycap.corner_radius,
             top_z: keycap.height,
-            inset: 0,
+            inset: shape === 'circle' ? rim : 0, // the circle mask keeps the rim free; the square one is clipped by the artwork area
         },
         artwork_area: { cx: 0, cy: 0, width: size - 2 * rim, height: size - 2 * rim },
     };

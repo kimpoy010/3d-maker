@@ -28,7 +28,7 @@ for (const shape of ['square', 'circle', 'trace']) {
         const body = parts[parts.length - 1];
         assert.equal(body.kind, 'body');
         assert.equal(body.name, 'Body');
-        for (const shell of body.shells) assert.ok(isClosedManifold(shell));
+        assert.ok(isClosedManifold(body));
 
         const [bx0, by0, bz0, bx1, by1, bz1] = bounds(body);
         assert.ok(Math.abs(bz0) < EPS && Math.abs(bz1 - 8) < EPS);
@@ -69,15 +69,35 @@ test('a missing or unknown base shape is treated as square', () => {
     assert.deepEqual(outline({ ...SETTINGS, base_shape: 'hexagon' }), square);
 });
 
-test('the circle keycap clips the artwork to the circle', () => {
+test('the circle keycap clips full-bleed artwork to the circle inside the rim', () => {
     const big = { ...SETTINGS, base_shape: 'circle', scale: 2 };
     const parts = buildParts(analyzeArtwork(sampleArtwork(), big, KEYCAP_BODY, 'preview'), big, KEYCAP_BODY);
+    const radius = 15 - 2; // size / 2 - rim
+    let reach = 0;
     for (const part of parts.filter((p) => p.kind === 'colour')) {
         const { positions } = part;
         // Pixels are kept when their centre is inside, so a corner may stick out by half a pixel diagonal.
         const slack = (Math.SQRT2 / 2) * ((26 * 2) / 240);
-        for (let i = 0; i < positions.length; i += 3) assert.ok(Math.hypot(positions[i], positions[i + 1]) <= 15 + slack + EPS);
+        for (let i = 0; i < positions.length; i += 3) {
+            const r = Math.hypot(positions[i], positions[i + 1]);
+            reach = Math.max(reach, r);
+            assert.ok(r <= radius + slack + EPS, `vertex at radius ${r}`);
+        }
     }
+    assert.ok(reach > radius - 1, `artwork reaches the clip edge (${reach})`);
+});
+
+test('the square keycap mask and the trace layout are unchanged', () => {
+    const reach = (shape) => {
+        const settings = { ...SETTINGS, base_shape: shape, scale: 2 };
+        const parts = buildParts(analyzeArtwork(sampleArtwork(), settings, KEYCAP_BODY, 'preview'), settings, KEYCAP_BODY);
+        const xs = parts.filter((p) => p.kind === 'colour').map((p) => bounds(p));
+
+        return Math.max(...xs.map((b) => Math.max(b[3], b[4])));
+    };
+
+    assert.ok(reach('square') > 13.5 && reach('square') <= 15 + EPS, 'square art may extend into the rim');
+    assert.ok(reach('trace') > 0);
 });
 
 test('a legacy body keeps its old behaviour: no body part, no cap analysis, no blockers', () => {
@@ -127,6 +147,7 @@ test('build.mjs builds a trace keycap with a generated Body part', () => {
     const model = strFromU8(unzipSync(readFileSync(join(dir, 'clicker.3mf')))['3D/3dmodel.model']);
     const names = [...model.matchAll(/<object [^>]*name="([^"]*)"/g)].map((m) => m[1]);
     assert.equal(names[names.length - 1], 'Body');
+    assert.equal(names.filter((n) => n === 'Body').length, 1, 'exactly one Body object');
     const result = JSON.parse(readFileSync(join(dir, 'result.json'), 'utf8'));
     assert.equal(result.parts[result.parts.length - 1].kind, 'body');
 });

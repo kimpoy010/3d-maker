@@ -1,6 +1,6 @@
-/** Cherry MX keycap body: a shell with a cross-shaped stem socket, built from two extruded shells. */
+/** Cherry MX keycap body: a solid cap with a cross-shaped stem socket open at the bottom, as one closed stepped shell. */
 
-import { extrudePolygons } from './mesh.js';
+import { triangulate } from './mesh.js';
 import { crossRing, ensureCcw } from './shapes.js';
 
 export const KEYCAP_DEFAULTS = {
@@ -84,16 +84,53 @@ export function circleOutline(keycap) {
 }
 
 /**
- * Keycap body from a counter-clockwise outline (mm) and the stem centre. Shell A is the socket floor with the
- * cross hole through it (a little taller than the socket so it overlaps shell B); shell B is the solid cap above.
+ * Keycap body from a counter-clockwise outline (mm) and the stem centre: ONE closed, stepped shell. Outer walls run
+ * z 0..height, the cross socket walls z 0..socket_depth; the bottom face (z 0) is the outline with the cross as a hole,
+ * the top face (z height) is the outline, and the socket ceiling (z socket_depth) is the cross facing down.
  */
 export function buildKeycapBody({ outline, stem, keycap }) {
     const { span, arm } = keycap.stem;
     const ring = ensureCcw(outline);
-    const hole = [...crossRing(stem.x, stem.y, span, arm)].reverse(); // holes must be clockwise
+    const hole = [...crossRing(stem.x, stem.y, span, arm)].reverse(); // the hole ring is clockwise
+    const n = ring.length;
+    const m = hole.length;
 
-    const shellA = extrudePolygons([{ outer: ring, holes: [hole] }], 0, keycap.socket_depth + 0.4);
-    const shellB = extrudePolygons([{ outer: ring, holes: [] }], keycap.socket_depth, keycap.height);
+    // Vertex blocks: outline at z 0, outline at z height, cross at z 0, cross at z socket_depth.
+    const o0 = 0;
+    const o1 = n;
+    const c0 = 2 * n;
+    const c1 = 2 * n + m;
+    const positions = new Float32Array(3 * (2 * n + 2 * m));
+    const put = (at, points, z) => points.forEach(([x, y], i) => positions.set([x, y, z], 3 * (at + i)));
+    put(o0, ring, 0);
+    put(o1, ring, keycap.height);
+    put(c0, hole, 0);
+    put(c1, hole, keycap.socket_depth);
 
-    return { kind: 'body', name: 'Body', hex: '#9CA3AF', ...mergeMeshes([shellA, shellB]), shells: [shellA, shellB] };
+    const indices = [];
+    const walls = (lower, upper, count) => {
+        for (let i = 0; i < count; i++) {
+            const a = i;
+            const b = (i + 1) % count;
+            indices.push(lower + a, lower + b, upper + b, lower + a, upper + b, upper + a);
+        }
+    };
+    walls(o0, o1, n);
+    walls(c0, c1, m);
+
+    // Bottom (z 0, facing down): the outline with the cross as a hole.
+    const bottomFlat = [...ring, ...hole].flat();
+    const bottom = triangulate(bottomFlat, [n]);
+    const onBottom = (i) => (i < n ? o0 + i : c0 + i - n);
+    for (let t = 0; t < bottom.length; t += 3) indices.push(onBottom(bottom[t]), onBottom(bottom[t + 2]), onBottom(bottom[t + 1]));
+
+    // Top (z height, facing up).
+    const top = triangulate(ring.flat());
+    for (let t = 0; t < top.length; t += 3) indices.push(o1 + top[t], o1 + top[t + 1], o1 + top[t + 2]);
+
+    // Socket ceiling (z socket_depth, facing down: the material is above it).
+    const ceiling = triangulate(hole.flat());
+    for (let t = 0; t < ceiling.length; t += 3) indices.push(c1 + ceiling[t], c1 + ceiling[t + 2], c1 + ceiling[t + 1]);
+
+    return { kind: 'body', name: 'Body', hex: '#9CA3AF', positions, indices: Uint32Array.from(indices) };
 }

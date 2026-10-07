@@ -127,11 +127,11 @@ The user picks a base shape in the editor (saved as `settings.base_shape`, defau
 
 - **Square**: a rounded square keycap outline.
 - **Circle**: a round outline.
-- **Trace**: follows the silhouette of the uploaded artwork. It needs transparent or clean artwork (a clear background); a busy or solid-background image gives a blocky outline. The outline offsets are ignored for Trace.
+- **Trace**: follows the silhouette of the uploaded artwork. It needs transparent or clean artwork (a clear background); a busy or solid-background image gives a blocky outline. The position (left/right, up/down) sliders are hidden for Trace because they would move the whole keycap; any saved offsets still apply.
 
 All sizes are millimetres and live in the body config under `keycap` (defaults from `ClickerBody::sampleConfig()`): `size` 30, `rim` 2, `corner_radius` 4, `height` 8, `socket_depth` 4.5, and the cross-socket numbers `stem.span` 4.2, `stem.arm` 1.35, `stem.wall` 1.2. The stem numbers have not been tested on a real switch.
 
-Print the cap upright, without supports: the body is solid and the cross socket opens at the bottom. The body is two overlapping shells, which slicers merge when loading the file.
+Print the cap upright, without supports: the body is solid and the cross socket opens at the bottom. The body is a single closed solid with the cross socket open at the bottom.
 
 Re-seeding does NOT overwrite an existing body, so to change the numbers edit the body's row (its `config` JSON) or add a new body. Also change `sampleConfig()` for new installs. The app is reached at the `php artisan serve` address (<http://127.0.0.1:8000>) with `npm run dev` running alongside.
 

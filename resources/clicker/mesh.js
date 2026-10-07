@@ -16,6 +16,21 @@ export function toMm(polygons, frame) {
     }));
 }
 
+/** Earcut triangulation of flat [x, y, ...] rings (outer first, then holes starting at `holeStarts`), every triangle counter-clockwise. */
+export function triangulate(flat, holeStarts = []) {
+    const triangles = earcut(flat, holeStarts, 2);
+    for (let t = 0; t < triangles.length; t += 3) {
+        const a = triangles[t];
+        const b = triangles[t + 1];
+        const c = triangles[t + 2];
+        const cross =
+            (flat[2 * b] - flat[2 * a]) * (flat[2 * c + 1] - flat[2 * a + 1]) - (flat[2 * b + 1] - flat[2 * a + 1]) * (flat[2 * c] - flat[2 * a]);
+        if (cross < 0) [triangles[t + 1], triangles[t + 2]] = [c, b];
+    }
+
+    return triangles;
+}
+
 /**
  * Extrude polygons (mm, y up, outer CCW, holes CW) from z0 to z1 into a closed, consistently wound mesh.
  * @returns {{positions: Float32Array, indices: Uint32Array}}
@@ -44,14 +59,9 @@ export function extrudePolygons(polygons, z0, z1) {
         for (let i = 0; i < count; i++) positions.push(flat[2 * i], flat[2 * i + 1], z0);
         for (let i = 0; i < count; i++) positions.push(flat[2 * i], flat[2 * i + 1], z1);
 
-        const triangles = earcut(flat, holeStarts, 2);
+        const triangles = triangulate(flat, holeStarts);
         for (let t = 0; t < triangles.length; t += 3) {
-            const a = triangles[t];
-            let b = triangles[t + 1];
-            let c = triangles[t + 2];
-            const cross =
-                (flat[2 * b] - flat[2 * a]) * (flat[2 * c + 1] - flat[2 * a + 1]) - (flat[2 * b + 1] - flat[2 * a + 1]) * (flat[2 * c] - flat[2 * a]);
-            if (cross < 0) [b, c] = [c, b];
+            const [a, b, c] = [triangles[t], triangles[t + 1], triangles[t + 2]];
             indices.push(base + count + a, base + count + b, base + count + c); // top, facing up
             indices.push(base + a, base + c, base + b); // bottom, facing down
         }

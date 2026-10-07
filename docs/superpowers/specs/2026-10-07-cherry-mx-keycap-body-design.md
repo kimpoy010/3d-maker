@@ -30,9 +30,9 @@ All sizes are millimetres; defaults live in the body config under `keycap`:
 
 The body config also carries `generator: "mx_keycap"`. Bodies without a `generator` keep the existing behaviour (static STL files, cap mask, grey slab proxy).
 
-**Body mesh.** A solid keycap printed upright, no supports: the outline extruded from z 0 to `height`, with a cross-shaped socket cut from z 0 to `socket_depth`. Built as two closed, manifold shells that overlap by 0.4 mm (slicers union them): shell A = outline minus the cross, z 0 to `socket_depth + 0.4`; shell B = the plain outline, z `socket_depth` to `height`. Each shell passes `isClosedManifold`. Part kind `body`, name `Body`, hex `#9CA3AF`.
+**Body mesh.** A solid keycap printed upright, no supports: the outline extruded from z 0 to `height`, with a cross-shaped socket cut from z 0 to `socket_depth`. Built as ONE closed, manifold stepped shell with no overlap and no coplanar internal faces: outer walls from z 0 to `height`; cross-socket walls from z 0 to `socket_depth`; a bottom face at z 0 (the outline with the cross as a hole); a top face at z `height` (the outline); and a downward-facing ceiling at z `socket_depth` (the cross). The mesh passes `isClosedManifold` and its volume is outline area x `height` minus cross area x `socket_depth`. Part kind `body`, name `Body`, hex `#9CA3AF`.
 
-**Square / Circle.** Outline = `capPolygon` of a rounded square (`size`, `corner_radius`) or a circle (`size` diameter, 72 segments). Artwork area = `size - 2*rim` square, centred; the existing cap mask, speck cleanup, tracing and extrusion are unchanged. Stem at (0, 0).
+**Square / Circle.** Outline = `capPolygon` of a rounded square (`size`, `corner_radius`) or a circle (`size` diameter, 72 segments). Artwork area = `size - 2*rim` square, centred; the cap mask (for Circle inset by `rim`, so full-bleed artwork is clipped to radius `size/2 - rim`), speck cleanup, tracing and extrusion are unchanged. Stem at (0, 0).
 
 **Trace.** Artwork fits a `size` x `size` box times the user's scale and offsets. The outline is computed on a separate coarse grid (at most 512 px on the longest side, at most 0.08 mm per pixel coarser than the working grid, never finer):
 1. Silhouette = pixels with alpha >= 128 (an opaque JPG gives a rectangle).
