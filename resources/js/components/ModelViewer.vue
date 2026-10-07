@@ -67,7 +67,8 @@ function resize() {
     camera.updateProjectionMatrix();
 }
 
-function frameModel(object: THREE.Object3D) {
+/** `elevated` (parts mode) looks down at about 40 degrees so the top face and artwork show; GLB framing is unchanged. */
+function frameModel(object: THREE.Object3D, elevated = false) {
     const box = new THREE.Box3().setFromObject(object);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
@@ -76,7 +77,8 @@ function frameModel(object: THREE.Object3D) {
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
     camera!.near = maxDim / 100;
     camera!.far = maxDim * 100;
-    camera!.position.set(0, maxDim * 0.3, maxDim * 2.2);
+    if (elevated) camera!.position.set(0, maxDim * 1.4, maxDim * 1.6);
+    else camera!.position.set(0, maxDim * 0.3, maxDim * 2.2);
     camera!.updateProjectionMatrix();
     controls!.target.set(0, 0, 0);
     controls!.update();
@@ -151,13 +153,15 @@ function showParts(list: Part[]) {
     scene.add(group);
     applyLook();
 
-    const first = new THREE.Box3().setFromObject(group.children[0]).getSize(new THREE.Vector3());
+    // Key the framing on the keycap/slab body (the last part of a generated body), not on a colour layer.
+    const bodyIndex = Math.max(0, list.findIndex((p) => p.kind === 'body'));
+    const first = new THREE.Box3().setFromObject(group.children[bodyIndex]).getSize(new THREE.Vector3());
     const sizeKey = `${first.x.toFixed(2)},${first.y.toFixed(2)},${first.z.toFixed(2)}`;
 
     if (framedOnce && sizeKey === framedFor) {
         group.position.copy(centerOffset);
     } else {
-        frameModel(group);
+        frameModel(group, true);
         centerOffset.copy(group.position);
         framedOnce = true;
         framedFor = sizeKey;

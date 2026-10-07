@@ -123,6 +123,7 @@ function runAnalysis() {
         parts.value = [];
         return;
     }
+    buildError.value = '';
     try {
         analysis.value = analyze(pixels.value, settings.value, body.value.config);
         notes.value = analysis.value.notes;
@@ -132,6 +133,7 @@ function runAnalysis() {
         analysis.value = null;
         parts.value = [];
         blockers.value = [];
+        buildError.value = '';
         loadError.value = error instanceof Error ? error.message : 'The preview could not be built.';
     }
 }
@@ -275,7 +277,9 @@ async function save() {
 // ---- paying, duplicating, deleting, downloading
 const unlockForm = useForm<Record<string, unknown>>({});
 const canUnlock = computed(() => !!props.clicker && !props.clicker.unlocked && ['draft', 'failed'].includes(props.clicker.status));
-const blocked = computed(() => blockers.value.length > 0);
+// A generated body can only be checked for blockers once analysed: keep Unlock off until the first analysis exists.
+const awaitingAnalysis = computed(() => isGenerated.value && analysis.value === null && (pixels.value !== null || !!props.clicker?.urls.artwork));
+const blocked = computed(() => blockers.value.length > 0 || awaitingAnalysis.value);
 const affordable = computed(() => props.balance >= props.unlock_cost);
 const duplicating = ref(false);
 const busy = computed(() => saveForm.processing || saving.value || unlockForm.processing || duplicating.value);
@@ -378,13 +382,13 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 
                 <template v-if="pixels">
                     <section v-if="isGenerated" class="space-y-2">
-                        <h2 class="text-sm font-medium">3. Base shape</h2>
-                        <div class="grid grid-cols-3 gap-2">
+                        <h2 id="base-shape-heading" class="text-sm font-medium">3. Base shape</h2>
+                        <div class="grid grid-cols-3 gap-2" role="group" aria-labelledby="base-shape-heading">
                             <button
                                 v-for="shape in baseShapes"
                                 :key="shape.value"
                                 type="button"
-                                class="flex flex-col items-center gap-1 rounded-xl border p-3 text-xs"
+                                class="flex flex-col items-center gap-1 rounded-xl border p-3 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 :class="settings.base_shape === shape.value ? 'border-primary ring-2 ring-primary/30' : 'hover:bg-muted/40'"
                                 :aria-pressed="settings.base_shape === shape.value"
                                 @click="settings.base_shape = shape.value"
