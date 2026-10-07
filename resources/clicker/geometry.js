@@ -15,6 +15,7 @@ export const BASE_SHAPES = ['square', 'circle', 'trace'];
 export const STEM_BLOCKER = 'This shape is too thin to hold the switch stem. Make the artwork larger or choose Square or Circle.';
 
 export const HOLLOW_NOTE = 'The shape is too small for a hollow cap, so the cap is solid.';
+export const HOLLOW_FAILED_NOTE = 'The hollow cap could not be built for this shape, so the cap is solid.';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -72,7 +73,7 @@ export function prepareArtwork(image, settings, body) {
  *   {generator: 'mx_keycap', keycap, max_layer_height, min_feature}; then settings.base_shape picks the outline
  * @param {'preview'|'final'} quality
  * @returns analysis; for generated bodies `cap` = {outline, stem}, plus `cavity` (hollow cap polygons, possibly
- *   empty) when settings.hollow_cap is true, and `blockers` lists reasons the cap cannot be built
+ *   empty) and `hollowBody` (the verified hollow cap part, or null) when settings.hollow_cap is true, and `blockers` lists reasons the cap cannot be built
  */
 export function analyzeArtwork(source, settings, body, quality = 'preview') {
     const image = prepareArtwork(source, settings, body);
@@ -159,9 +160,21 @@ export function analyzeArtwork(source, settings, body, quality = 'preview') {
     if (generated && settings.hollow_cap === true) {
         keycapShape.cavity = hollowCavity({ shape, ...keycapShape, keycap, trace: traced });
         if (keycapShape.cavity.length === 0) notes.push(HOLLOW_NOTE);
+        else if (blockers.length === 0) prepareHollowCap(keycapShape, keycap, notes);
     }
 
     return { palette, polygons, outlineIndex, notes, mmPerPx, frame, cap: keycapShape, blockers };
+}
+
+/**
+ * Build the hollow cap for `cap` = {outline, stem, cavity} once and keep it as `cap.hollowBody` when it is a verified
+ * closed manifold; otherwise set `cap.hollowBody = null` and add the fallback note (the solid cap is used).
+ */
+export function prepareHollowCap(cap, keycap, notes) {
+    cap.hollowBody = buildHollowCapBody({ outline: cap.outline, cavity: cap.cavity, stem: cap.stem, keycap });
+    if (!cap.hollowBody) notes.push(HOLLOW_FAILED_NOTE);
+
+    return cap;
 }
 
 /**
@@ -199,12 +212,10 @@ export function buildParts(analysis, settings, body) {
     }
 
     if (generated) {
-        const { outline: capOutline, stem, cavity } = analysis.cap;
-        // The cavity is only worked out when hollow_cap was on at analysis time; turning it off needs no re-analysis.
-        const hollow = settings.hollow_cap === true && cavity?.length > 0;
-        parts.push(
-            hollow ? buildHollowCapBody({ outline: capOutline, cavity, stem, keycap }) : buildKeycapBody({ outline: capOutline, stem, keycap }),
-        );
+        const { outline: capOutline, stem, hollowBody } = analysis.cap;
+        // The hollow cap is built and verified during analysis (it does not depend on the colour heights); turning
+        // hollow_cap off needs no re-analysis, turning it on does.
+        parts.push(settings.hollow_cap === true && hollowBody ? { ...hollowBody } : buildKeycapBody({ outline: capOutline, stem, keycap }));
     }
 
     return parts;

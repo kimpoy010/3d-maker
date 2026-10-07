@@ -5,7 +5,7 @@
 
 import { triangulate } from './mesh.js';
 import { crossRing, ensureCcw } from './shapes.js';
-import { planarFace, pointInPolygons, wallStrip, weld } from './solids.js';
+import { planarFace, pointInPolygons, verifiedMesh, wallStrip, weld } from './solids.js';
 import { signedArea } from './trace.js';
 
 export const KEYCAP_DEFAULTS = {
@@ -191,7 +191,10 @@ const polygonArea = ({ outer, holes }) => Math.abs(signedArea(outer)) - holes.re
  * Empty when nothing fits.
  */
 export function hollowCavity({ shape, outline, stem, keycap, trace }) {
-    const { wall, boss_radius: bossRadius } = keycap.hollow;
+    const { wall, plate, boss_radius: bossRadius } = keycap.hollow;
+    const { span, arm } = keycap.stem;
+    // Config guards: the plate must leave a cavity, and the boss must wrap the cross with at least 0.5 mm.
+    if (plate >= keycap.height || bossRadius < Math.hypot(span / 2, arm / 2) + 0.5) return [];
     if (shape === 'trace') return trace ? trace.cavity(wall, bossRadius) : [];
 
     const inset = insetOutline(outline, shape, keycap, wall);
@@ -216,6 +219,8 @@ const reversed = (ring) => [...ring].reverse();
  * `height - plate` bounded by the `cavity` polygons (their holes are solid islands reaching down to z 0) with its
  * roof facing down; the cross socket z 0..socket_depth cut into whichever bottom face holds the stem (the boss
  * island, or the outline's bottom face when the boss merged with the wall).
+ * @returns the part, or null when the welded shell is not a closed manifold with positive volume (or the stem lies
+ *   in the cavity); callers then fall back to the solid cap
  */
 export function buildHollowCapBody({ outline, cavity, stem, keycap }) {
     const { height, socket_depth: depth } = keycap;
@@ -239,7 +244,7 @@ export function buildHollowCapBody({ outline, cavity, stem, keycap }) {
         bottom[owner].holes.push(reversed(ensureCcw(outer)));
     }
     const holder = bottom.find((polygon) => pointInPolygons([stem.x, stem.y], [polygon]));
-    if (!holder) throw new Error('The stem lies inside the cap cavity.');
+    if (!holder) return null; // the stem lies inside the cavity
     holder.holes.push(reversed(cross));
 
     const meshes = [
@@ -255,5 +260,7 @@ export function buildHollowCapBody({ outline, cavity, stem, keycap }) {
         for (const hole of holes) meshes.push(wallStrip(hole, 0, roof, 'out'));
     }
 
-    return { kind: 'body', name: 'Cap', hex: '#9CA3AF', ...weld(meshes) };
+    const mesh = verifiedMesh(weld(meshes));
+
+    return mesh && { kind: 'body', name: 'Cap', hex: '#9CA3AF', ...mesh };
 }

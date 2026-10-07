@@ -4,7 +4,7 @@
  * with the strips' edges and a correctly assembled shell is a closed manifold.
  */
 
-import { triangulate } from './mesh.js';
+import { isClosedManifold, meshVolume, triangulate } from './mesh.js';
 import { signedArea } from './trace.js';
 
 /**
@@ -170,6 +170,11 @@ export function planarFace(polygons, z, up) {
     }
 
     return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
+}
+
+/** The mesh when it is a closed, consistently wound manifold with positive volume, otherwise null. */
+export function verifiedMesh(mesh) {
+    return mesh && isClosedManifold(mesh) && meshVolume(mesh) > 0 ? mesh : null;
 }
 
 /** Concatenate meshes, merge vertices with the same coordinates (to `epsilon`) and drop degenerate triangles. */
