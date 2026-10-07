@@ -16,7 +16,11 @@ export const KEYCAP_DEFAULTS = {
     socket_depth: 4.5,
     stem: { span: 4.2, arm: 1.35, wall: 1.2 },
     hollow: { wall: 1.6, plate: 2.0, boss_radius: 3.6 },
+    base: { height: 12, plate: 1.5, wall: 2.0, cutout: 14.1, gap: 4.0, spacing: 10, hex: '#6B7280' },
 };
+
+/** Clearance kept around the switch cutout inside the base cavity, mm. */
+const CUTOUT_MARGIN = 0.8;
 
 /** Smallest cavity piece kept, mm². */
 const MIN_CAVITY_MM2 = 4;
@@ -24,7 +28,7 @@ const MIN_CAVITY_MM2 = 4;
 const BOSS_MARGIN = 0.5;
 const BOSS_SEGMENTS = 48;
 
-/** `body.keycap` merged over the defaults (deep for `stem` and `hollow`). */
+/** `body.keycap` merged over the defaults (deep for `stem`, `hollow` and `base`). */
 export function keycapConfig(body) {
     const given = body?.keycap ?? {};
 
@@ -33,6 +37,7 @@ export function keycapConfig(body) {
         ...given,
         stem: { ...KEYCAP_DEFAULTS.stem, ...(given.stem ?? {}) },
         hollow: { ...KEYCAP_DEFAULTS.hollow, ...(given.hollow ?? {}) },
+        base: { ...KEYCAP_DEFAULTS.base, ...(given.base ?? {}) },
     };
 }
 
@@ -215,20 +220,10 @@ export function hollowCavity({ shape, outline, stem, keycap, trace }) {
 const reversed = (ring) => [...ring].reverse();
 
 /**
- * Hollow keycap cap as ONE closed shell: outline walls z 0..height and the top face; a cavity from z 0 up to
- * `height - plate` bounded by the `cavity` polygons (their holes are solid islands reaching down to z 0) with its
- * roof facing down; the cross socket z 0..socket_depth cut into whichever bottom face holds the stem (the boss
- * island, or the outline's bottom face when the boss merged with the wall).
- * @returns the part, or null when the welded shell is not a closed manifold with positive volume (or the stem lies
- *   in the cavity); callers then fall back to the solid cap
+ * Bottom faces (z 0) of a shell with a cavity open at the bottom: the outline and every island of the cavity, each
+ * minus the cavity pieces directly inside it (the innermost containing island owns a piece).
  */
-export function buildHollowCapBody({ outline, cavity, stem, keycap }) {
-    const { height, socket_depth: depth } = keycap;
-    const roof = height - keycap.hollow.plate;
-    const ring = ensureCcw(outline);
-    const cross = crossRing(stem.x, stem.y, keycap.stem.span, keycap.stem.arm);
-
-    // Bottom faces (z 0): the outline and every island, each minus the cavity pieces directly inside it.
+function cavityBottom(ring, cavity) {
     const islands = cavity.flatMap(({ holes }) => holes.map((hole) => ensureCcw(hole)));
     const bottom = [{ outer: ring, holes: [] }, ...islands.map((island) => ({ outer: island, holes: [] }))];
     for (const { outer } of cavity) {
@@ -243,6 +238,30 @@ export function buildHollowCapBody({ outline, cavity, stem, keycap }) {
         });
         bottom[owner].holes.push(reversed(ensureCcw(outer)));
     }
+
+    return bottom;
+}
+
+/** Cavity walls from z 0 to `roof`: facing into the cavity along its outer rings, out of the islands along the holes. */
+function cavityWalls(cavity, roof) {
+    return cavity.flatMap(({ outer, holes }) => [wallStrip(outer, 0, roof, 'in'), ...holes.map((hole) => wallStrip(hole, 0, roof, 'out'))]);
+}
+
+/**
+ * Hollow keycap cap as ONE closed shell: outline walls z 0..height and the top face; a cavity from z 0 up to
+ * `height - plate` bounded by the `cavity` polygons (their holes are solid islands reaching down to z 0) with its
+ * roof facing down; the cross socket z 0..socket_depth cut into whichever bottom face holds the stem (the boss
+ * island, or the outline's bottom face when the boss merged with the wall).
+ * @returns the part, or null when the welded shell is not a closed manifold with positive volume (or the stem lies
+ *   in the cavity); callers then fall back to the solid cap
+ */
+export function buildHollowCapBody({ outline, cavity, stem, keycap }) {
+    const { height, socket_depth: depth } = keycap;
+    const roof = height - keycap.hollow.plate;
+    const ring = ensureCcw(outline);
+    const cross = crossRing(stem.x, stem.y, keycap.stem.span, keycap.stem.arm);
+
+    const bottom = cavityBottom(ring, cavity);
     const holder = bottom.find((polygon) => pointInPolygons([stem.x, stem.y], [polygon]));
     if (!holder) return null; // the stem lies inside the cavity
     holder.holes.push(reversed(cross));
@@ -254,13 +273,94 @@ export function buildHollowCapBody({ outline, cavity, stem, keycap }) {
         planarFace(cavity, roof, false),
         wallStrip(cross, 0, depth, 'in'),
         planarFace([{ outer: cross, holes: [] }], depth, false),
+        ...cavityWalls(cavity, roof),
     ];
-    for (const { outer, holes } of cavity) {
-        meshes.push(wallStrip(outer, 0, roof, 'in'));
-        for (const hole of holes) meshes.push(wallStrip(hole, 0, roof, 'out'));
-    }
 
     const mesh = verifiedMesh(weld(meshes));
 
     return mesh && { kind: 'body', name: 'Cap', hex: '#9CA3AF', ...mesh };
+}
+
+/** Counter-clockwise axis-aligned square of half size `half` centred on (x, y). */
+function squareRing(x, y, half) {
+    return [
+        [x - half, y - half],
+        [x + half, y - half],
+        [x + half, y + half],
+        [x - half, y + half],
+    ];
+}
+
+/** True when the segment a-b has a point inside or on the box [x0, x1] x [y0, y1] (Liang-Barsky clipping). */
+function segmentTouchesBox([ax, ay], [bx, by], x0, y0, x1, y1) {
+    let t0 = 0;
+    let t1 = 1;
+    const dx = bx - ax;
+    const dy = by - ay;
+    for (const [p, q] of [
+        [-dx, ax - x0],
+        [dx, x1 - ax],
+        [-dy, ay - y0],
+        [dy, y1 - ay],
+    ]) {
+        if (p === 0) {
+            if (q < 0) return false;
+            continue;
+        }
+        const t = q / p;
+        if (p < 0) t0 = Math.max(t0, t);
+        else t1 = Math.min(t1, t);
+        if (t0 > t1) return false;
+    }
+
+    return true;
+}
+
+/**
+ * True when the switch cutout, expanded by 0.8 mm on every side, lies inside the base's inset region: its corners and
+ * edge midpoints are inside the polygons and no inset ring (outer edge, hole or island) reaches into or touches it.
+ */
+export function baseFits({ inset, stem, keycap }) {
+    const half = keycap.base.cutout / 2 + CUTOUT_MARGIN;
+    const [x0, y0, x1, y1] = [stem.x - half, stem.y - half, stem.x + half, stem.y + half];
+    const samples = [...squareRing(stem.x, stem.y, half), [stem.x, y0], [x1, stem.y], [stem.x, y1], [x0, stem.y]];
+    if (!samples.every((point) => pointInPolygons(point, inset))) return false;
+
+    return inset.every(({ outer, holes }) =>
+        [outer, ...holes].every((ring) => ring.every((point, i) => !segmentTouchesBox(point, ring[(i + 1) % ring.length], x0, y0, x1, y1))),
+    );
+}
+
+/**
+ * Switch base as ONE closed shell on the cap's outline (z 0..height): outline walls and a top face with the square
+ * switch cutout centred on the stem; the cutout's walls from `height - plate` up to the top; the plate's underside
+ * facing down at `height - plate`; below it a cavity bounded by the `inset` polygons (holes are solid islands reaching
+ * down to z 0), open at the bottom.
+ * @returns the part, or null when the config leaves no plate or cavity, the cutout is not inside one inset piece, or
+ *   the welded shell is not a closed manifold with positive volume
+ */
+export function buildBase({ outline, inset, stem, keycap }) {
+    const { height, plate, cutout, hex } = keycap.base;
+    if (!(plate > 0 && plate < height && cutout > 0) || inset.length === 0) return null;
+
+    const roof = height - plate;
+    const ring = ensureCcw(outline);
+    const square = squareRing(stem.x, stem.y, cutout / 2);
+    const cavity = inset.map(({ outer, holes }) => ({ outer: ensureCcw(outer), holes: holes.map((hole) => reversed(ensureCcw(hole))) }));
+    const owner = cavity.find((piece) => pointInPolygons([stem.x, stem.y], [piece]));
+    if (!owner) return null;
+    const plateUnderside = cavity.map((piece) => (piece === owner ? { outer: piece.outer, holes: [...piece.holes, reversed(square)] } : piece));
+
+    const meshes = [
+        wallStrip(ring, 0, height, 'out'),
+        planarFace([{ outer: ring, holes: [reversed(square)] }], height, true),
+        wallStrip(square, roof, height, 'in'),
+        planarFace(plateUnderside, roof, false),
+        planarFace(cavityBottom(ring, cavity), 0, false),
+        ...cavityWalls(cavity, roof),
+    ];
+
+    const mesh = verifiedMesh(weld(meshes));
+
+    return mesh && { kind: 'base', name: 'Base', hex, ...mesh };
 }

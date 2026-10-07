@@ -77,3 +77,21 @@ test('the STL zip holds one file per part and a README with the notes', () => {
     assert.ok(readme.includes('01-colour-f5a742.stl'));
     assert.equal(files['clicker-7/01-colour-f5a742.stl'].length, 84 + 50 * 12);
 });
+
+test('STL files are named by part name; colour and outline files keep their hex names', () => {
+    const parts = [
+        square('#F5A742'),
+        square('#111111', 'outline', 'Outline #111111'),
+        square('#9CA3AF', 'body', 'Cap'),
+        square('#6B7280', 'base', 'Base'),
+        square('#9CA3AF', 'body', 'Body top (v2)'),
+    ];
+
+    assert.deepEqual(
+        parts.map((part, index) => stlFileName(part, index)),
+        ['01-colour-f5a742.stl', '02-outline-111111.stl', '03-cap.stl', '04-base.stl', '05-body-top-v2.stl'],
+    );
+    assert.equal(stlFileName(square('#9CA3AF', 'body', '***'), 0), '01-body.stl', 'an empty slug falls back to the kind');
+    const readme = strFromU8(unzipSync(encodeStlZip(parts))['clicker/README.txt']);
+    assert.ok(readme.includes('- 04-base.stl: Base'));
+});

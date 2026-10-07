@@ -48,9 +48,16 @@ export function encodeThreeMf(parts, title = 'Clicker') {
     });
 }
 
-/** File name inside the STL zip for one part. */
+/**
+ * File name inside the STL zip for one part: colour and outline parts by kind and colour (`colour-1d4ed8`), every
+ * other part by its slugified name (`cap`, `base`, `body`), falling back to the kind.
+ */
 export function stlFileName(part, index) {
-    const slug = part.kind === 'body' ? 'body' : `${part.kind}-${part.hex.replace('#', '').toLowerCase()}`;
+    const named = part.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    const slug = part.kind === 'colour' || part.kind === 'outline' ? `${part.kind}-${part.hex.replace('#', '').toLowerCase()}` : named || part.kind;
 
     return `${String(index + 1).padStart(2, '0')}-${slug}.stl`;
 }

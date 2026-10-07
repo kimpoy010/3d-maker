@@ -18,14 +18,15 @@ const EPS = 1e-3;
 const thinLine = () => makeImage(220, 220, (x, y) => (x >= 10 && x < 210 && y >= 108 && y < 112 ? [29, 78, 216] : null));
 
 for (const shape of ['square', 'circle', 'trace']) {
-    test(`a ${shape} keycap: colour parts sit on the body and the body comes last`, () => {
+    test(`a ${shape} keycap: colour parts sit on the body, then come the cap and the base`, () => {
         const settings = { ...SETTINGS, base_shape: shape };
         const analysis = analyzeArtwork(sampleArtwork(), settings, KEYCAP_BODY, 'preview');
         const parts = buildParts(analysis, settings, KEYCAP_BODY);
 
         assert.deepEqual(analysis.blockers, []);
         assert.ok(Array.isArray(analysis.cap.outline) && analysis.cap.outline.length >= 3);
-        const body = parts[parts.length - 1];
+        assert.equal(parts.at(-1).kind, 'base');
+        const body = parts.at(-2);
         assert.equal(body.kind, 'body');
         assert.equal(body.name, 'Cap');
         assert.ok(isClosedManifold(body));
@@ -146,10 +147,11 @@ test('build.mjs builds a trace keycap with a generated Cap part', () => {
     assert.equal(run.status, 0, run.stderr);
     const model = strFromU8(unzipSync(readFileSync(join(dir, 'clicker.3mf')))['3D/3dmodel.model']);
     const names = [...model.matchAll(/<object [^>]*name="([^"]*)"/g)].map((m) => m[1]);
-    assert.equal(names[names.length - 1], 'Cap');
+    assert.equal(names.at(-2), 'Cap');
     assert.equal(names.filter((n) => n === 'Cap').length, 1, 'exactly one Cap object');
     const result = JSON.parse(readFileSync(join(dir, 'result.json'), 'utf8'));
-    assert.equal(result.parts[result.parts.length - 1].kind, 'body');
+    assert.equal(result.parts.at(-2).kind, 'body');
+    assert.equal(result.parts.at(-1).kind, 'base');
 });
 
 test('build.mjs still fails when a keycap has no printable colour, and on a blocker', () => {

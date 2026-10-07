@@ -5,7 +5,7 @@ import { buildHollowCapBody, buildKeycapBody, hollowCavity, insetOutline, keycap
 import { bounds, extrudePolygons, isClosedManifold, meshVolume } from '../mesh.js';
 import { pointInPolygons, verifiedMesh } from '../solids.js';
 import { signedArea } from '../trace.js';
-import { KEYCAP_BODY, SETTINGS, logoArtwork, makeImage } from './helpers.js';
+import { KEYCAP_BODY, SETTINGS, logoArtwork, makeImage, materialAlong } from './helpers.js';
 
 const HOLLOW_NOTE = 'The shape is too small for a hollow cap, so the cap is solid.';
 const FAILED_NOTE = 'The hollow cap could not be built for this shape, so the cap is solid.';
@@ -16,31 +16,6 @@ const near = (actual, expected, relative, label) =>
 
 const polygonArea = (polygons) =>
     polygons.reduce((sum, { outer, holes }) => sum + Math.abs(signedArea(outer)) - holes.reduce((s, h) => s + Math.abs(signedArea(h)), 0), 0);
-
-/** Material intervals [[zIn, zOut], ...] along a vertical ray at (px, py). */
-function materialAlong(mesh, px, py) {
-    const v = (i) => [mesh.positions[3 * i], mesh.positions[3 * i + 1], mesh.positions[3 * i + 2]];
-    const hits = [];
-    for (let t = 0; t < mesh.indices.length; t += 3) {
-        const [a, b, c] = [v(mesh.indices[t]), v(mesh.indices[t + 1]), v(mesh.indices[t + 2])];
-        const det = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
-        if (Math.abs(det) < 1e-12) continue; // vertical wall
-        const u = ((px - a[0]) * (c[1] - a[1]) - (py - a[1]) * (c[0] - a[0])) / det;
-        const w = ((b[0] - a[0]) * (py - a[1]) - (b[1] - a[1]) * (px - a[0])) / det;
-        if (u < 0 || w < 0 || u + w > 1) continue;
-        hits.push({ z: a[2] + u * (b[2] - a[2]) + w * (c[2] - a[2]), up: det > 0 });
-    }
-    hits.sort((p, q) => p.z - q.z);
-
-    const intervals = [];
-    for (let i = 0; i < hits.length; i += 2) {
-        assert.equal(hits[i].up, false, 'enters through a downward face');
-        assert.equal(hits[i + 1]?.up, true, 'leaves through an upward face');
-        intervals.push([hits[i].z, hits[i + 1].z]);
-    }
-
-    return intervals;
-}
 
 const assertIntervals = (actual, expected, label) => {
     assert.equal(actual.length, expected.length, `${label}: ${JSON.stringify(actual)}`);
@@ -89,6 +64,14 @@ function checkHollow(body, { outline, cavity, stem, keycap }) {
 
 const keycap = keycapConfig({});
 
+/** The cap part; the switch base follows it. */
+const capOf = (parts) => {
+    const caps = parts.filter((p) => p.name === 'Cap');
+    assert.equal(caps.length, 1);
+    assert.equal(parts.at(-1).name, 'Base');
+    return caps[0];
+};
+
 test('keycapConfig carries the hollow defaults', () => {
     assert.deepEqual(keycap.hollow, { wall: 1.6, plate: 2.0, boss_radius: 3.6 });
     assert.equal(keycapConfig({ keycap: { hollow: { wall: 2 } } }).hollow.plate, 2.0);
@@ -129,7 +112,7 @@ for (const shape of ['square', 'circle']) {
         assert.ok(!analysis.notes.includes(HOLLOW_NOTE));
 
         const parts = buildParts(analysis, settings, KEYCAP_BODY);
-        checkHollow(parts[parts.length - 1], { outline, cavity, stem, keycap });
+        checkHollow(capOf(parts), { outline, cavity, stem, keycap });
     });
 }
 
@@ -148,7 +131,7 @@ test('hollow trace cap on a logo', () => {
     assert.ok(!pointInPolygons([stem.x, stem.y], cavity), 'the stem is not in the cavity');
 
     const parts = buildParts(analysis, settings, KEYCAP_BODY);
-    checkHollow(parts[parts.length - 1], { outline, cavity, stem, keycap });
+    checkHollow(capOf(parts), { outline, cavity, stem, keycap });
 });
 
 test('a cavity whose boss merged with the wall puts the cross in the bottom face', () => {
@@ -184,7 +167,7 @@ test('hollow_cap false keeps the solid cap, now named Cap, with the same volume'
         const settings = { ...SETTINGS, base_shape: shape };
         const analysis = analyzeArtwork(logoArtwork(300), settings, KEYCAP_BODY, 'preview');
         const parts = buildParts(analysis, settings, KEYCAP_BODY);
-        const cap = parts[parts.length - 1];
+        const cap = capOf(parts);
         const solid = buildKeycapBody({ outline: analysis.cap.outline, stem: analysis.cap.stem, keycap });
 
         assert.equal(analysis.cap.cavity, undefined);
@@ -197,16 +180,17 @@ test('hollow_cap false keeps the solid cap, now named Cap, with the same volume'
 });
 
 test('a trace shape too small for a cavity falls back to the solid cap with a note', () => {
-    // A 3 mm radius dot fitted into 30 mm: the outline is a ~5 mm disc, the eroded core sits inside the boss.
-    const dot = makeImage(300, 300, (x, y) => (Math.hypot(x + 0.5 - 150, y + 0.5 - 150) < 30 ? [29, 78, 216] : null));
+    // A shape small enough for nothing to remain inside the boss is also too small for the switch base, so the
+    // cavity is squeezed out by a 14 mm cavity wall instead: the ~32 mm logo outline erodes to a core inside the boss.
+    const body = { ...KEYCAP_BODY, keycap: { hollow: { wall: 14 } } };
     const settings = { ...SETTINGS, base_shape: 'trace', hollow_cap: true };
-    const analysis = analyzeArtwork(dot, settings, KEYCAP_BODY, 'preview');
+    const analysis = analyzeArtwork(logoArtwork(300), settings, body, 'preview');
 
     assert.deepEqual(analysis.blockers, []);
     assert.deepEqual(analysis.cap.cavity, []);
     assert.ok(analysis.notes.includes(HOLLOW_NOTE));
-    const parts = buildParts(analysis, settings, KEYCAP_BODY);
-    const cap = parts[parts.length - 1];
+    const parts = buildParts(analysis, settings, body);
+    const cap = capOf(parts);
     assert.equal(cap.name, 'Cap');
     assert.ok(isClosedManifold(cap));
     const { span, arm } = keycap.stem;
@@ -303,7 +287,7 @@ test('a hollow shell that fails verification is never returned; the analysis fal
     assert.ok(analysis.notes.includes(FAILED_NOTE));
 
     const parts = buildParts(analysis, settings, KEYCAP_BODY);
-    const cap = parts[parts.length - 1];
+    const cap = capOf(parts);
     assert.equal(cap.name, 'Cap');
     assert.ok(isClosedManifold(cap));
     near(meshVolume(cap), meshVolume(buildKeycapBody({ outline, stem, keycap })), 1e-9, 'solid volume');
@@ -321,11 +305,11 @@ test('the hollow cap from the analysis is reused when only heights change', () =
     const a = buildParts(analysis, settings, KEYCAP_BODY);
     const b = buildParts(analysis, taller, KEYCAP_BODY);
 
-    assert.deepEqual(b[b.length - 1].positions, a[a.length - 1].positions);
+    assert.deepEqual(capOf(b).positions, capOf(a).positions);
     assert.notDeepEqual(bounds(b[0]), bounds(a[0]), 'the colour parts follow the new heights');
-    near(meshVolume(b[b.length - 1]), meshVolume(analysis.cap.hollowBody), 1e-9, 'hollow volume');
+    near(meshVolume(capOf(b)), meshVolume(analysis.cap.hollowBody), 1e-9, 'hollow volume');
     assert.ok(
-        meshVolume(buildParts(analysis, { ...settings, hollow_cap: false }, KEYCAP_BODY).at(-1)) > meshVolume(a.at(-1)),
+        meshVolume(capOf(buildParts(analysis, { ...settings, hollow_cap: false }, KEYCAP_BODY))) > meshVolume(capOf(a)),
         'off gives the solid cap',
     );
 });
@@ -347,5 +331,5 @@ test('config guards: a plate as tall as the cap or a boss too small for the cros
     const analysis = analyzeArtwork(logoArtwork(200), settings, body, 'preview');
     assert.deepEqual(analysis.cap.cavity, []);
     assert.ok(analysis.notes.includes(HOLLOW_NOTE));
-    assert.equal(buildParts(analysis, settings, body).at(-1).name, 'Cap');
+    assert.equal(capOf(buildParts(analysis, settings, body)).name, 'Cap');
 });

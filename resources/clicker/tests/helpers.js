@@ -1,4 +1,31 @@
-/** Test helpers: tiny synthetic images and a sample body config. */
+/** Test helpers: tiny synthetic images, a sample body config and a vertical-ray probe for shells. */
+
+import assert from 'node:assert/strict';
+
+/** Material intervals [[zIn, zOut], ...] along a vertical ray at (px, py), checking each enters down and leaves up. */
+export function materialAlong(mesh, px, py) {
+    const v = (i) => [mesh.positions[3 * i], mesh.positions[3 * i + 1], mesh.positions[3 * i + 2]];
+    const hits = [];
+    for (let t = 0; t < mesh.indices.length; t += 3) {
+        const [a, b, c] = [v(mesh.indices[t]), v(mesh.indices[t + 1]), v(mesh.indices[t + 2])];
+        const det = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+        if (Math.abs(det) < 1e-12) continue; // vertical wall
+        const u = ((px - a[0]) * (c[1] - a[1]) - (py - a[1]) * (c[0] - a[0])) / det;
+        const w = ((b[0] - a[0]) * (py - a[1]) - (b[1] - a[1]) * (px - a[0])) / det;
+        if (u < 0 || w < 0 || u + w > 1) continue;
+        hits.push({ z: a[2] + u * (b[2] - a[2]) + w * (c[2] - a[2]), up: det > 0 });
+    }
+    hits.sort((p, q) => p.z - q.z);
+
+    const intervals = [];
+    for (let i = 0; i < hits.length; i += 2) {
+        assert.equal(hits[i].up, false, 'enters through a downward face');
+        assert.equal(hits[i + 1]?.up, true, 'leaves through an upward face');
+        intervals.push([hits[i].z, hits[i + 1].z]);
+    }
+
+    return intervals;
+}
 
 /** Build an RGBA image; `paint(x, y)` returns [r, g, b] or [r, g, b, a], or nothing for transparent. */
 export function makeImage(width, height, paint) {
