@@ -29,7 +29,7 @@ it('seeds the Cherry MX keycap body once, active, with a generator config and no
         ->and($body->config['keycap']['stem']['wall'])->toBe(1.2)
         ->and($body->config['keycap']['hollow'])->toEqual(['wall' => 1.6, 'plate' => 2.0, 'boss_radius' => 3.6])
         ->and($body->config['keycap']['base'])->toEqual([
-            'clearance' => 0.3, 'wall' => 2.0, 'plate' => 1.5, 'under' => 6.0, 'cavity' => 16.2, 'cutout' => 14.1,
+            'clearance' => 0.3, 'wall' => 2.0, 'plate' => 1.5, 'under' => 7.0, 'floor' => 1.5, 'cavity' => 16.2, 'cutout' => 14.1,
             'rest_gap' => 8.0, 'spacing' => 10, 'hex' => '#6B7280',
         ])
         ->and($body->config['keycap']['base'])->not->toHaveKeys(['height', 'gap']);

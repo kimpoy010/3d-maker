@@ -17,7 +17,7 @@ export const KEYCAP_DEFAULTS = {
     stem: { span: 4.2, arm: 1.35, wall: 1.2 },
     hollow: { wall: 1.6, plate: 2.0, boss_radius: 3.6 },
     // The open-top switch base the cap slides into (mm): see buildBase.
-    base: { clearance: 0.3, wall: 2.0, plate: 1.5, under: 6.0, cavity: 16.2, cutout: 14.1, rest_gap: 8.0, spacing: 10, hex: '#6B7280' },
+    base: { clearance: 0.3, wall: 2.0, plate: 1.5, under: 7.0, floor: 1.5, cavity: 16.2, cutout: 14.1, rest_gap: 8.0, spacing: 10, hex: '#6B7280' },
 };
 
 /** Cap material kept around the switch cutout, mm: the cutout plus this on every side must fit in the cap outline. */
@@ -370,18 +370,20 @@ export function baseTop(keycap, insertion) {
 
 /**
  * The open-top switch base the cap slides into, as ONE closed shell, upright with z 0 at its bottom. Zones from the
- * bottom: z 0..under is the `outline` with the square switch cavity open at the bottom; under..under + plate is the
- * plate with the square cutout through it; above it the `pocket` is open up to the rim at `baseTop` and the ring
- * between the pocket and the outline is solid. Faces: outer walls, the rim, the pocket walls, the plate top, the
- * cutout walls, the plate underside around the cutout, the cavity walls and the bottom around the cavity.
+ * bottom: z 0..floor is solid over the whole `outline` (the bottom is closed); floor..under is the `outline` with the
+ * enclosed square switch pocket (cavity x cavity); under..under + plate is the plate with the square cutout through
+ * it; above it the `pocket` is open up to the rim at `baseTop` and the ring between the pocket and the outline is
+ * solid. Faces: outer walls, the rim, the pocket walls, the plate top, the cutout walls, the plate underside around the
+ * cutout, the switch pocket walls, the pocket floor (facing up) and the whole bottom outline. The switch is reached
+ * only through the cutout.
  * @param {{pocket: number[][], outline: number[][], stem: {x, y}, keycap: object, insertion: number}} input the pocket
  *   and base outlines (rings in mm), the stem the squares are centred on, the keycap config and the cap insertion
  * @returns the part, or null when the config is unusable, the squares do not lie inside their outlines, or the welded
  *   shell is not a closed manifold with positive volume
  */
 export function buildBase({ pocket, outline, stem, keycap, insertion }) {
-    const { under, plate, cavity, cutout, rest_gap: restGap, hex } = keycap.base;
-    if (!(under > 0 && plate > 0 && restGap >= 0 && cutout > 0 && cavity > cutout)) return null;
+    const { under, floor, plate, cavity, cutout, rest_gap: restGap, hex } = keycap.base;
+    if (!(floor > 0 && under > floor && plate > 0 && restGap >= 0 && cutout > 0 && cavity > cutout)) return null;
 
     const ring = ensureCcw(outline);
     const pocketRing = ensureCcw(pocket);
@@ -389,7 +391,7 @@ export function buildBase({ pocket, outline, stem, keycap, insertion }) {
         return null;
     if (!pocketRing.every((point) => pointInPolygons(point, [{ outer: ring, holes: [] }]))) return null;
 
-    const floor = under + plate;
+    const plateTop = under + plate;
     const top = baseTop(keycap, insertion);
     const hole = squareRing(stem.x, stem.y, cutout / 2);
     const room = squareRing(stem.x, stem.y, cavity / 2);
@@ -397,12 +399,13 @@ export function buildBase({ pocket, outline, stem, keycap, insertion }) {
     const meshes = [
         wallStrip(ring, 0, top, 'out'),
         planarFace([{ outer: ring, holes: [reversed(pocketRing)] }], top, true),
-        wallStrip(pocketRing, floor, top, 'in'),
-        planarFace([{ outer: pocketRing, holes: [reversed(hole)] }], floor, true),
-        wallStrip(hole, under, floor, 'in'),
+        wallStrip(pocketRing, plateTop, top, 'in'),
+        planarFace([{ outer: pocketRing, holes: [reversed(hole)] }], plateTop, true),
+        wallStrip(hole, under, plateTop, 'in'),
         planarFace([{ outer: room, holes: [reversed(hole)] }], under, false),
-        wallStrip(room, 0, under, 'in'),
-        planarFace([{ outer: ring, holes: [reversed(room)] }], 0, false),
+        wallStrip(room, floor, under, 'in'),
+        planarFace([{ outer: room, holes: [] }], floor, true),
+        planarFace([{ outer: ring, holes: [] }], 0, false),
     ];
 
     const mesh = verifiedMesh(weld(meshes));

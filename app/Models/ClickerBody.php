@@ -59,11 +59,12 @@ class ClickerBody extends Model
                 // Hollow cap (settings.hollow_cap): shell wall, roof plate and the stem boss radius.
                 'hollow' => ['wall' => 1.6, 'plate' => 2.0, 'boss_radius' => 3.6],
                 // The open-top switch base printed beside the cap (the cap slides into it): clearance around the cap,
-                // wall, floor plate, depth below the cap's resting depth (`under`), switch cavity, switch cutout, gap
-                // between cap and base at rest, spacing between parts, and its colour. `rest_gap`, `under`, `cavity`,
-                // `clearance` and `cutout` are provisional until a test print.
+                // wall, top plate, height of the plate underside (`under`), thickness of the closed bottom (`floor`),
+                // switch pocket, switch cutout, gap between cap and base at rest, spacing between parts, and its
+                // colour. `rest_gap`, `under`, `floor`, `cavity`, `clearance` and `cutout` are provisional until a
+                // test print.
                 'base' => [
-                    'clearance' => 0.3, 'wall' => 2.0, 'plate' => 1.5, 'under' => 6.0, 'cavity' => 16.2, 'cutout' => 14.1,
+                    'clearance' => 0.3, 'wall' => 2.0, 'plate' => 1.5, 'under' => 7.0, 'floor' => 1.5, 'cavity' => 16.2, 'cutout' => 14.1,
                     'rest_gap' => 8.0, 'spacing' => 10, 'hex' => '#6B7280',
                 ],
             ],

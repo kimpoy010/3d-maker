@@ -22,9 +22,19 @@ const FAILED_BLOCKER = 'The switch base could not be built for this shape. Make 
 const EPS = 1e-3;
 
 const keycap = keycapConfig({});
-const { clearance: CLEARANCE, wall: WALL, plate: PLATE, under: UNDER, cavity: CAVITY, cutout: CUT, rest_gap: REST, spacing: SPACING } = keycap.base;
-const FLOOR = UNDER + PLATE;
-const topFor = (insertion) => FLOOR + REST + insertion * keycap.height;
+const {
+    clearance: CLEARANCE,
+    wall: WALL,
+    plate: PLATE,
+    under: UNDER,
+    floor: FLOOR,
+    cavity: CAVITY,
+    cutout: CUT,
+    rest_gap: REST,
+    spacing: SPACING,
+} = keycap.base;
+const PLATE_TOP = UNDER + PLATE;
+const topFor = (insertion) => PLATE_TOP + REST + insertion * keycap.height;
 const TOP = topFor(0.5);
 
 const near = (actual, expected, relative, label) =>
@@ -92,7 +102,7 @@ function checkBase(part, { baseOutline, pocketOutline, stem }, { dx = 0, dz = 0,
     assert.equal(part.hex, '#6B7280');
     assert.ok(isClosedManifold(part), 'manifold');
 
-    const expected = area(baseOutline) * top - area(pocketOutline) * (top - FLOOR) - CAVITY * CAVITY * UNDER - CUT * CUT * PLATE;
+    const expected = area(baseOutline) * top - area(pocketOutline) * (top - PLATE_TOP) - CAVITY * CAVITY * (UNDER - FLOOR) - CUT * CUT * PLATE;
     near(meshVolume(part), expected, 0.01, 'volume');
 
     const [, , z0, , , z1] = bounds(part);
@@ -102,9 +112,16 @@ function checkBase(part, { baseOutline, pocketOutline, stem }, { dx = 0, dz = 0,
     const at = (intervals) => intervals.map(([a, b]) => [a + dz, b + dz]);
     const cavitySquare = squareAround(stem, CAVITY / 2);
 
-    assertIntervals(ray([stem.x + 0.011, stem.y + 0.007]), [], 'through the cutout: the cavity, then the open pocket');
+    assertIntervals(ray([stem.x + 0.011, stem.y + 0.007]), at([[0, FLOOR]]), 'through the cutout: the floor only, then the pocket and the open top');
     const plate = [stem.x + (CUT + CAVITY) / 4, stem.y + 0.0071];
-    assertIntervals(ray(plate), at([[UNDER, FLOOR]]), 'through the plate over the cavity');
+    assertIntervals(
+        ray(plate),
+        at([
+            [0, FLOOR],
+            [UNDER, PLATE_TOP],
+        ]),
+        'through the plate over the pocket',
+    );
     const rim = findPoint(
         [baseOutline, pocketOutline, cavitySquare],
         (p) => pointInPolygons(p, whole(baseOutline)) && !pointInPolygons(p, whole(pocketOutline)) && !pointInPolygons(p, whole(cavitySquare)),
@@ -114,7 +131,22 @@ function checkBase(part, { baseOutline, pocketOutline, stem }, { dx = 0, dz = 0,
         [pocketOutline, cavitySquare],
         (p) => pointInPolygons(p, whole(pocketOutline)) && !pointInPolygons(p, whole(cavitySquare)),
     );
-    assertIntervals(ray(pocket), at([[0, FLOOR]]), 'through the pocket: nothing above the plate');
+    assertIntervals(ray(pocket), at([[0, PLATE_TOP]]), 'through the pocket: nothing above the plate');
+
+    // The bottom is closed: every probe point inside the outline meets material at z 0, and the face there is the
+    // whole outline with no inner ring.
+    for (const point of [[stem.x + 0.011, stem.y + 0.007], plate, rim, pocket]) assert.ok(Math.abs(ray(point)[0][0] - dz) < EPS, 'closed bottom');
+    const bottomVertices = [];
+    for (let i = 0; i < part.positions.length; i += 3) {
+        if (Math.abs(part.positions[i + 2] - dz) < EPS) bottomVertices.push([part.positions[i] - dx, part.positions[i + 1]]);
+    }
+    const stemSquare = squareAround(stem, CAVITY / 2);
+    assert.ok(bottomVertices.length > 0);
+    assert.ok(
+        bottomVertices.every((p) => distanceToRing(p, baseOutline) < EPS),
+        'z 0 vertices are all on the outline',
+    );
+    assert.ok(!bottomVertices.some((p) => pointInPolygons(p, whole(stemSquare))), 'no vertex of the cavity square at z 0');
 }
 
 test('keycapConfig carries the new base defaults, deep merges them and ignores the old keys', () => {
@@ -122,7 +154,8 @@ test('keycapConfig carries the new base defaults, deep merges them and ignores t
         clearance: 0.3,
         wall: 2.0,
         plate: 1.5,
-        under: 6.0,
+        under: 7.0,
+        floor: 1.5,
         cavity: 16.2,
         cutout: 14.1,
         rest_gap: 8.0,
@@ -219,10 +252,10 @@ for (const shape of ['square', 'circle', 'trace']) {
                 'the base comes last, after the cap',
             );
             const [cap, base] = parts.slice(-2);
-            checkBase(base, analysis.cap, { dz: -(REST + FLOOR) });
+            checkBase(base, analysis.cap, { dz: -(REST + PLATE_TOP) });
             const [, , bz0, , , bz1] = bounds(base);
             assert.ok(Math.abs(bz1 - 0.5 * keycap.height) < EPS, `rim at ${bz1}`);
-            assert.ok(Math.abs(bz0 + REST + FLOOR) < EPS);
+            assert.ok(Math.abs(bz0 + REST + PLATE_TOP) < EPS);
             const [, , cz0, , , cz1] = bounds(cap);
             assert.ok(Math.abs(cz0) < EPS && Math.abs(cz1 - keycap.height) < EPS);
 
@@ -237,7 +270,7 @@ for (const shape of ['square', 'circle', 'trace']) {
             }
             // No overlap: under the cap there is no base material above the plate top.
             for (const [fx, fy] of [
-                [0, 0],
+                [0.0004, 0.0003],
                 [0.4, 0.1],
                 [-0.3, 0.35],
                 [0.1, -0.42],
@@ -287,7 +320,7 @@ test('a different cap_insertion at build time rebuilds the base; an equal one re
 
     const deeper = buildParts(analysis, { ...settings, cap_insertion: 1 }, KEYCAP_BODY).at(-1);
     assert.ok(Math.abs(bounds(deeper)[5] - keycap.height) < EPS, `rim at ${bounds(deeper)[5]}`);
-    checkBase(deeper, analysis.cap, { dz: -(REST + FLOOR), top: topFor(1) });
+    checkBase(deeper, analysis.cap, { dz: -(REST + PLATE_TOP), top: topFor(1) });
     const printed = buildParts(analysis, { ...settings, cap_insertion: 1 }, KEYCAP_BODY, { layout: 'print' }).at(-1);
     assert.ok(Math.abs(bounds(printed)[5] - topFor(1)) < EPS);
     assert.equal(analysis.cap.baseBody, cached, 'the analysis is left untouched');
@@ -320,7 +353,7 @@ test('an owner-like logo (opaque white background, ring around a monitor) is not
         assert.deepEqual(analysis.blockers, [], `hollow ${hollow}`);
         const parts = buildParts(analysis, settings, KEYCAP_BODY);
         assert.ok(parts.some((p) => p.kind === 'colour'));
-        checkBase(parts.at(-1), analysis.cap, { dz: -(REST + FLOOR) });
+        checkBase(parts.at(-1), analysis.cap, { dz: -(REST + PLATE_TOP) });
         assert.ok(isClosedManifold(parts.at(-2)));
     }
 });
@@ -399,6 +432,37 @@ test('a base that cannot be built is never returned; the analysis gets the build
     assert.deepEqual(analysis.blockers, [FAILED_BLOCKER]);
     assert.equal(analysis.cap.baseBody, null);
     assert.throws(() => buildParts(analysis, settings, body), { message: FAILED_BLOCKER });
+});
+
+test('floor defaults to 1.5 when missing; an old under of 6.0 still builds; under <= floor or floor <= 0 cannot be built', () => {
+    const outline = squareOutline({ size: 34.6, corner_radius: 6.3 });
+    const pocket = squareOutline({ size: 30.6, corner_radius: 4.3 });
+    const stem = { x: 0, y: 0 };
+    const withBase = (base) => ({ ...keycap, base: { ...keycap.base, ...base } });
+
+    const row = keycapConfig({ keycap: { base: { clearance: 0.3, wall: 2.0, plate: 1.5, under: 6.0, cavity: 16.2, cutout: 14.1 } } });
+    assert.equal(row.base.floor, 1.5);
+    const legacy = buildBase({ pocket, outline, stem, keycap: row, insertion: 0.5 });
+    assert.ok(isClosedManifold(legacy));
+    near(bounds(legacy)[5], 6 + PLATE + REST + 0.5 * keycap.height, 1e-9, 'legacy rim');
+    // Pocket 6.0 - 1.5 = 4.5 tall.
+    const lifted = materialAlong(legacy, stem.x + (CUT + CAVITY) / 4, stem.y + 0.0071);
+    assertIntervals(
+        lifted,
+        [
+            [0, 1.5],
+            [6, 7.5],
+        ],
+        'legacy plate over a 4.5 mm pocket',
+    );
+
+    for (const bad of [{ floor: 0 }, { floor: -1 }, { under: 1.5 }, { under: 1 }]) {
+        assert.equal(buildBase({ pocket, outline, stem, keycap: withBase(bad), insertion: 0.5 }), null, JSON.stringify(bad));
+    }
+    const body = { ...KEYCAP_BODY, keycap: { base: { under: 1.5 } } };
+    const settings = { ...SETTINGS, base_shape: 'square' };
+    const analysis = analyzeArtwork(solidBlue(), settings, body, 'preview');
+    assert.deepEqual(analysis.blockers, [FAILED_BLOCKER]);
 });
 
 test('legacy bodies get no base in either layout', async () => {
