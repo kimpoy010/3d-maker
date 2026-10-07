@@ -149,6 +149,11 @@ test('capInsertion clamps to 0.5..1 and defaults to 0.5', () => {
     assert.equal(capInsertion({ cap_insertion: 3 }), 1);
     assert.equal(capInsertion({ cap_insertion: 'abc' }), 0.5);
     assert.equal(capInsertion({ cap_insertion: null }), 0.5);
+    assert.equal(capInsertion({ cap_insertion: '0.8' }), 0.8, 'a numeric string');
+    assert.equal(capInsertion({ cap_insertion: '2' }), 1);
+    for (const junk of [true, false, NaN, Infinity, -Infinity, {}, [], [0.8], '', ' ', '0.8mm']) {
+        assert.equal(capInsertion({ cap_insertion: junk }), 0.5, `${JSON.stringify(junk)} falls back`);
+    }
 });
 
 test('growOutline grows the square and circle outlines by the distance, counter-clockwise', () => {
@@ -181,12 +186,13 @@ test('the trace outline grows its mask by the distance, counter-clockwise', () =
         assert.ok(isClosedManifold(extrudePolygons(whole(grown), 0, 1)));
         for (const point of grown) {
             assert.ok(!pointInPolygons(point, whole(traced.outline)), 'outside the cap outline');
+            // Never closer than the distance (less the 0.03 mm simplification), at most about a cell diagonal farther.
             const d = distanceToRing(point, traced.outline);
-            assert.ok(Math.abs(d - distance) <= cell + 0.03, `grown vertex at ${d} for ${distance}`);
+            assert.ok(d >= distance - 0.03 && d <= distance + 1.5 * cell + 0.03, `grown vertex at ${d} for ${distance}`);
         }
         for (const point of traced.outline) {
             assert.ok(pointInPolygons(point, whole(grown)), 'the cap outline is inside');
-            assert.ok(distanceToRing(point, grown) >= distance - cell - 0.03, `cap vertex ${distanceToRing(point, grown)} from the grown ring`);
+            assert.ok(distanceToRing(point, grown) >= distance - 0.03, `cap vertex ${distanceToRing(point, grown)} from the grown ring`);
         }
     }
 });
@@ -222,8 +228,9 @@ for (const shape of ['square', 'circle', 'trace']) {
 
             // The cap outline plus the clearance fits within the pocket.
             const { outline, pocketOutline, stem } = analysis.cap;
-            // Analytic: the pocket's chords cut its arcs by up to ~0.021 mm (4.3 mm corners in 8 segments); trace: one cell.
-            const slack = shape === 'trace' ? 0.15 : 0.025;
+            // Analytic: the pocket's chords cut its arcs by up to ~0.021 mm (4.3 mm corners in 8 segments); trace: the
+            // 0.03 mm simplification.
+            const slack = shape === 'trace' ? 0.03 : 0.025;
             for (const point of outline) {
                 assert.ok(pointInPolygons(point, whole(pocketOutline)));
                 assert.ok(distanceToRing(point, pocketOutline) >= CLEARANCE - slack, `${distanceToRing(point, pocketOutline)}`);
@@ -271,6 +278,26 @@ test('cap_insertion 0.5 and 1.0 set the rim height', () => {
         assert.ok(Math.abs(bounds(printed)[2]) < EPS && Math.abs(bounds(printed)[5] - topFor(insertion)) < EPS);
     }
     assert.equal(topFor(1) - topFor(0.5), keycap.height / 2);
+});
+
+test('a different cap_insertion at build time rebuilds the base; an equal one reuses the analysed base', () => {
+    const { analysis, settings } = analyse('square', solidBlue(), { cap_insertion: 0.5 });
+    assert.equal(analysis.cap.baseInsertion, 0.5);
+    const cached = analysis.cap.baseBody;
+
+    const deeper = buildParts(analysis, { ...settings, cap_insertion: 1 }, KEYCAP_BODY).at(-1);
+    assert.ok(Math.abs(bounds(deeper)[5] - keycap.height) < EPS, `rim at ${bounds(deeper)[5]}`);
+    checkBase(deeper, analysis.cap, { dz: -(REST + FLOOR), top: topFor(1) });
+    const printed = buildParts(analysis, { ...settings, cap_insertion: 1 }, KEYCAP_BODY, { layout: 'print' }).at(-1);
+    assert.ok(Math.abs(bounds(printed)[5] - topFor(1)) < EPS);
+    assert.equal(analysis.cap.baseBody, cached, 'the analysis is left untouched');
+    assert.equal(analysis.cap.baseInsertion, 0.5);
+
+    // Equal insertion (also when the setting is missing, i.e. the default): the analysed base is used as is.
+    analysis.cap.baseBody = { ...cached, hex: '#123456' };
+    for (const same of [settings, { ...settings, cap_insertion: undefined }])
+        assert.equal(buildParts(analysis, same, KEYCAP_BODY).at(-1).hex, '#123456');
+    assert.equal(buildParts(analysis, { ...settings, cap_insertion: 0.75 }, KEYCAP_BODY).at(-1).hex, '#6B7280', 'rebuilt');
 });
 
 test('the base from the analysis is reused when only heights change', () => {

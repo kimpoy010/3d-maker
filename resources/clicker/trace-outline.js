@@ -149,9 +149,12 @@ export function traceOutline({ image, frame, keycap }) {
         return maskPolygons(mask, w, h, grid);
     };
 
-    // 6. Growth for the switch base's pocket and outline: the same grown mask dilated by `distance`, its outer ring.
+    // 6. Growth for the switch base's pocket and outline: the same grown mask dilated, its outer ring. Every point
+    // within `distance` of a set cell lies in a cell whose centre is within `distance` + one cell diagonal of a set
+    // cell's centre, so dilating by that radius keeps the grown ring at least `distance` away (at most about one cell
+    // diagonal more); a plain `distance / cell` falls a cell short along diagonal staircases.
     const grow = (distance) => {
-        const pieces = maskPolygons(dilate(grown, w, h, distance / cell), w, h, grid);
+        const pieces = maskPolygons(dilate(grown, w, h, distance / cell + Math.SQRT2), w, h, grid);
 
         return pieces.reduce((best, piece) => (Math.abs(signedArea(piece.outer)) > Math.abs(signedArea(best.outer)) ? piece : best)).outer;
     };

@@ -238,10 +238,12 @@ export function analyzeArtwork(source, settings, body, quality = 'preview') {
 /**
  * Build the switch base for `cap` = {pocketOutline, baseOutline, stem} once, upright in its own frame (z 0 at its
  * bottom, the rim at `baseTop(keycap, insertion)`), and keep it as `cap.baseBody` when it is a verified closed
- * manifold; otherwise set `cap.baseBody = null` and add the blocker (an unverified base is never exported). The base
- * depends on the cap insertion, so changing `settings.cap_insertion` needs a fresh analysis.
+ * manifold; otherwise set `cap.baseBody = null` and add the blocker (an unverified base is never exported). The
+ * insertion it was built for is kept as `cap.baseInsertion`; `buildParts` rebuilds the base when the settings ask for
+ * another one.
  */
 export function prepareBase(cap, keycap, insertion, blockers) {
+    cap.baseInsertion = insertion;
     cap.baseBody = buildBase({ pocket: cap.pocketOutline, outline: cap.baseOutline, stem: cap.stem, keycap, insertion });
     if (!cap.baseBody) blockers.push(BASE_FAILED_BLOCKER);
 
@@ -319,11 +321,15 @@ export function buildParts(analysis, settings, body, { layout = 'assembled' } = 
     }
 
     if (generated) {
-        const { outline: capOutline, stem, hollowBody, baseBody, baseOutline } = analysis.cap;
+        const { outline: capOutline, stem, hollowBody, baseOutline } = analysis.cap;
         // The hollow cap is built and verified during analysis (it does not depend on the colour heights); turning
         // hollow_cap off needs no re-analysis, turning it on does.
         parts.push(settings.hollow_cap === true && hollowBody ? { ...hollowBody } : buildKeycapBody({ outline: capOutline, stem, keycap }));
-        // So is the base; only its placement depends on the layout.
+        // So is the base, for the insertion the analysis saw; a different insertion rebuilds (and re-verifies) it on a
+        // copy, leaving the analysis untouched. Only its placement depends on the layout.
+        const insertion = capInsertion(settings);
+        let { baseBody } = analysis.cap;
+        if (insertion !== analysis.cap.baseInsertion) ({ baseBody } = prepareBase({ ...analysis.cap }, keycap, insertion, []));
         if (!baseBody) throw new Error(BASE_FAILED_BLOCKER);
         parts.push(placeBase(baseBody, baseOutline, keycap.base, LAYOUTS.includes(layout) ? layout : 'assembled'));
     }
