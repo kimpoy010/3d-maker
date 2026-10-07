@@ -45,10 +45,22 @@ const emptySettings = (): ClickerSettings => ({
     outline_mm: 0,
     outline_hex: '#111111',
     base_shape: 'square',
+    hollow_cap: false,
+    remove_background: true,
 });
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
-// Designs saved before base shapes existed have no base_shape: they are square.
-const normalise = (saved: ClickerSettings): ClickerSettings => ({ ...emptySettings(), ...clone(saved) });
+// Designs saved before base shapes existed have no base_shape: they are square. Designs saved before the base and
+// background options have neither: the cap is solid, and the background is removed for a generated keycap body only
+// (a legacy body is built from the artwork as it is, so the preview matches the build).
+const normalise = (saved: ClickerSettings, forBody: number): ClickerSettings => {
+    const merged = { ...emptySettings(), ...clone(saved) };
+    const generated = !!props.bodies.find((b) => b.id === forBody)?.config.generator;
+    if (saved.remove_background === undefined || saved.remove_background === null) merged.remove_background = generated;
+    merged.hollow_cap = !!merged.hollow_cap;
+    merged.remove_background = !!merged.remove_background;
+
+    return merged;
+};
 
 const baseShapes: { value: BaseShape; label: string }[] = [
     { value: 'square', label: 'Square' },
@@ -56,10 +68,17 @@ const baseShapes: { value: BaseShape; label: string }[] = [
     { value: 'trace', label: 'Trace' },
 ];
 
+const switches: { key: 'remove_background' | 'hollow_cap'; label: string; hint: string }[] = [
+    { key: 'remove_background', label: 'Remove background', hint: 'Makes a plain background transparent so Trace follows your artwork.' },
+    { key: 'hollow_cap', label: 'Hollow cap', hint: 'Lighter cap with a hollow underside. Needs supports when printed.' },
+];
+
 // ---- editable state
 const name = ref(props.clicker?.name ?? 'My clicker');
 const bodyId = ref<number>(props.clicker?.body_id ?? props.bodies[0]?.id ?? 0);
-const settings = ref<ClickerSettings>(props.clicker ? normalise(props.clicker.settings) : emptySettings());
+const settings = ref<ClickerSettings>(props.clicker ? normalise(props.clicker.settings, props.clicker.body_id) : emptySettings());
+// A new design starts for the first body: a legacy body does not remove the background unless asked.
+if (!props.clicker) settings.value.remove_background = !!props.bodies[0]?.config.generator;
 const colorCount = ref(settings.value.colors.length || 4);
 const pixels = shallowRef<Pixels | null>(null);
 const artworkBlob = shallowRef<Blob | null>(null); // only set when the user picked a new file
@@ -92,6 +111,8 @@ const analysisKey = computed(() =>
         settings.value.offset_y,
         settings.value.outline_mm,
         settings.value.base_shape,
+        settings.value.hollow_cap,
+        settings.value.remove_background,
         settings.value.colors.map((c) => [c.hex, c.enabled]),
     ]),
 );
@@ -152,9 +173,14 @@ onBeforeUnmount(() => {
 // ---- artwork and colours
 const defaultHeight = (index: number) => Math.min(body.value?.config.max_layer_height ?? 3, Math.round((0.6 + 0.4 * index) * 10) / 10);
 
+// Only the colour count or new artwork picks colours again; toggling Remove background keeps the colours as they are.
 function resetPalette() {
-    if (!pixels.value) return;
-    settings.value.colors = paletteFor(pixels.value, colorCount.value).map((hex, index) => ({ hex, height_mm: defaultHeight(index), enabled: true }));
+    if (!pixels.value || !body.value) return;
+    settings.value.colors = paletteFor(pixels.value, colorCount.value, settings.value, body.value.config).map((hex, index) => ({
+        hex,
+        height_mm: defaultHeight(index),
+        enabled: true,
+    }));
 }
 
 async function useFile(file: File | undefined) {
@@ -176,6 +202,11 @@ const onDrop = (event: DragEvent) => useFile(event.dataTransfer?.files?.[0]);
 function setColorCount(count: number) {
     colorCount.value = count;
     resetPalette();
+}
+
+// Another body: background removal is on by default for a generated keycap body and off for a legacy one.
+function chooseBody(chosen: Body) {
+    settings.value.remove_background = !!chosen.config.generator;
 }
 
 function removeColor(index: number) {
@@ -219,7 +250,7 @@ const canSave = computed(
 function rebaseline(clicker: ClickerData) {
     name.value = clicker.name;
     bodyId.value = clicker.body_id;
-    settings.value = normalise(clicker.settings);
+    settings.value = normalise(clicker.settings, clicker.body_id);
     colorCount.value = settings.value.colors.length;
     artworkBlob.value = null;
     savedKey.value = snapshotKey();
@@ -281,7 +312,12 @@ const canUnlock = computed(() => !!props.clicker && !props.clicker.unlocked && [
 const awaitingAnalysis = computed(() => isGenerated.value && analysis.value === null && (pixels.value !== null || !!props.clicker?.urls.artwork));
 // The build fails when no colour lands on the cap (the body alone is not printable artwork): flag it before the user pays.
 const noPrintableColour = computed(
-    () => isGenerated.value && analysis.value !== null && blockers.value.length === 0 && !buildError.value && !parts.value.some((p) => p.kind !== 'body'),
+    () =>
+        isGenerated.value &&
+        analysis.value !== null &&
+        blockers.value.length === 0 &&
+        !buildError.value &&
+        !parts.value.some((p) => p.kind !== 'body' && p.kind !== 'base'),
 );
 const blocked = computed(() => blockers.value.length > 0 || !!buildError.value || noPrintableColour.value || awaitingAnalysis.value);
 const affordable = computed(() => props.balance >= props.unlock_cost);
@@ -356,7 +392,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                             class="flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm"
                             :class="bodyId === b.id ? 'border-primary ring-2 ring-primary/30' : 'hover:bg-muted/40'"
                         >
-                            <input v-model="bodyId" type="radio" :value="b.id" class="mt-1" />
+                            <input v-model="bodyId" type="radio" :value="b.id" class="mt-1" @change="chooseBody(b)" />
                             <span>
                                 <span class="block font-medium">{{ b.name }}</span>
                                 <span v-if="b.description" class="block text-xs text-muted-foreground">{{ b.description }}</span>
@@ -412,6 +448,27 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                     : 'The artwork sits on top of a keycap with this outline.'
                             }}
                         </p>
+                        <label
+                            v-for="option in switches"
+                            :key="option.key"
+                            class="flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm focus-within:ring-2 focus-within:ring-ring"
+                        >
+                            <input
+                                v-model="settings[option.key]"
+                                type="checkbox"
+                                role="switch"
+                                class="peer sr-only"
+                                :aria-describedby="`${option.key}-hint`"
+                            />
+                            <span
+                                class="relative mt-0.5 h-5 w-9 shrink-0 rounded-full bg-muted-foreground/30 transition-colors after:absolute after:left-0.5 after:top-0.5 after:size-4 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:bg-primary peer-checked:after:translate-x-4"
+                                aria-hidden="true"
+                            ></span>
+                            <span>
+                                <span class="block font-medium">{{ option.label }}</span>
+                                <span :id="`${option.key}-hint`" class="block text-xs text-muted-foreground">{{ option.hint }}</span>
+                            </span>
+                        </label>
                     </section>
 
                     <section class="space-y-3">

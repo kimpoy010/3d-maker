@@ -1,4 +1,4 @@
-import { analyzeArtwork, bodyProxyPart, buildParts, suggestPalette } from '@clicker/geometry.js';
+import { analyzeArtwork, bodyProxyPart, buildParts, prepareArtwork, suggestPalette } from '@clicker/geometry.js';
 
 /** Typed access to the shared clicker geometry module (plain JavaScript, also run by the server build). */
 
@@ -12,6 +12,8 @@ export type ClickerSettings = {
     outline_mm: number;
     outline_hex: string;
     base_shape: BaseShape;
+    hollow_cap: boolean;
+    remove_background: boolean;
 };
 
 export type BaseShape = 'square' | 'circle' | 'trace';
@@ -30,7 +32,7 @@ export type BodyConfig = {
 /** RGBA pixels, as from canvas getImageData(). */
 export type Pixels = { data: Uint8ClampedArray; width: number; height: number };
 
-export type Part = { kind: 'colour' | 'outline' | 'body'; name: string; hex: string; positions: Float32Array; indices: Uint32Array };
+export type Part = { kind: 'colour' | 'outline' | 'body' | 'base'; name: string; hex: string; positions: Float32Array; indices: Uint32Array };
 
 /** The slow half of the pipeline. Opaque to the editor except for the print notes. */
 export type Analysis = { notes: string[]; blockers: string[] };
@@ -43,4 +45,9 @@ export const extrude = (analysis: Analysis, settings: ClickerSettings, body: Bod
 
 export const bodyProxy = (cap: BodyConfig['cap']): Part => bodyProxyPart(cap) as Part;
 
-export const paletteFor = (image: Pixels, count: number): string[] => suggestPalette(image, count) as string[];
+/** The artwork as the pipeline sees it (a plain background made transparent when that setting applies). */
+export const prepared = (image: Pixels, settings: ClickerSettings, body: BodyConfig): Pixels => prepareArtwork(image, settings, body) as Pixels;
+
+/** Suggest colours from the prepared artwork, so a removed background does not take a colour slot. */
+export const paletteFor = (image: Pixels, count: number, settings: ClickerSettings, body: BodyConfig): string[] =>
+    suggestPalette(prepared(image, settings, body), count) as string[];
