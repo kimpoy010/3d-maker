@@ -3,38 +3,51 @@
 use App\Models\ClickerBody;
 use Database\Seeders\ClickerBodySeeder;
 
-it('seeds the development body once, with a complete config and a real model file', function () {
+it('seeds the Cherry MX keycap body once, active, with a generator config and no model files', function () {
     $this->seed(ClickerBodySeeder::class);
     $this->seed(ClickerBodySeeder::class);
 
-    $body = ClickerBody::where('slug', 'placeholder-slab')->firstOrFail();
+    $body = ClickerBody::where('name', 'Cherry MX keycap')->firstOrFail();
 
     expect(ClickerBody::count())->toBe(1)
         ->and($body->active)->toBeTrue()
+        ->and($body->model_files)->toBe([])
+        ->and($body->config['generator'])->toBe('mx_keycap')
+        ->and($body->config['keycap']['size'])->toBe(30)
+        ->and($body->config['keycap']['stem'])->toHaveKeys(['span', 'arm', 'wall'])
         ->and($body->config['cap'])->toHaveKeys(['shape', 'width', 'height', 'corner_radius', 'top_z', 'inset'])
         ->and($body->config['artwork_area'])->toHaveKeys(['cx', 'cy', 'width', 'height'])
-        ->and($body->config)->toHaveKeys(['max_layer_height', 'min_feature']);
+        ->and($body->config)->toHaveKeys(['max_layer_height', 'min_feature'])
+        ->and($body->config['switch'])->toBe('Cherry MX');
+});
 
-    foreach ($body->model_files as $file) {
+it('does not seed the placeholder slab, which stays creatable through its factory', function () {
+    $this->seed(ClickerBodySeeder::class);
+
+    expect(ClickerBody::where('slug', 'placeholder-slab')->exists())->toBeFalse();
+
+    $slab = ClickerBody::factory()->create();
+    foreach ($slab->model_files as $file) {
         expect(base_path($file))->toBeFile();
     }
 });
 
-it('never reactivates the placeholder body on a re-seed', function () {
+it('never reactivates the keycap body on a re-seed', function () {
     $this->seed(ClickerBodySeeder::class);
-    ClickerBody::where('slug', 'placeholder-slab')->update(['active' => false]);
+    ClickerBody::where('name', 'Cherry MX keycap')->update(['active' => false]);
 
     $this->seed(ClickerBodySeeder::class);
 
-    expect(ClickerBody::where('slug', 'placeholder-slab')->firstOrFail()->active)->toBeFalse();
+    expect(ClickerBody::where('name', 'Cherry MX keycap')->firstOrFail()->active)->toBeFalse()
+        ->and(ClickerBody::count())->toBe(1);
 });
 
-it('does not create the placeholder body in production', function () {
+it('seeds the keycap body in production too, since it is a real body', function () {
     $this->app['env'] = 'production';
 
     (new ClickerBodySeeder)->run();
 
-    expect(ClickerBody::count())->toBe(0);
+    expect(ClickerBody::where('name', 'Cherry MX keycap')->count())->toBe(1);
 });
 
 it('has sensible clicker limits in config', function () {

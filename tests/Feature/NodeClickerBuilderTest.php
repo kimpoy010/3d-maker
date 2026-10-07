@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Clicker;
+use App\Models\ClickerBody;
 use App\Services\Clickers\ClickerBuildException;
 use App\Services\Clickers\NodeClickerBuilder;
 use Illuminate\Support\Facades\Log;
@@ -44,6 +45,26 @@ it('runs the node script on a job folder and moves the outputs into place', func
         ->and($job['bodyFiles'][0]['path'])->toEndWith('body.stl')
         ->and($job['bodyFiles'][0]['path'])->toBeFile()
         ->and($job['folder'])->toBe("clicker-{$this->clicker->id}");
+});
+
+it('passes a generator body through with no body files', function () {
+    $this->clicker->body->update(['model_files' => [], 'config' => ClickerBody::sampleConfig()]);
+    $job = null;
+    Process::fake(function ($process) use (&$job) {
+        $folder = end($process->command);
+        $job = json_decode(file_get_contents("{$folder}/job.json"), true);
+        file_put_contents("{$folder}/clicker.3mf", '3mf');
+        file_put_contents("{$folder}/clicker-stl.zip", 'zip');
+
+        return Process::result();
+    });
+
+    $this->builder->build($this->clicker->load('body'));
+
+    expect($job['bodyFiles'])->toBe([])
+        ->and($job['body'])->toHaveKeys(['generator', 'keycap', 'cap', 'artwork_area', 'max_layer_height', 'min_feature'])
+        ->and($job['body']['generator'])->toBe('mx_keycap')
+        ->and($job['body'])->not->toHaveKey('switch');
 });
 
 it('turns a failing script into a customer-safe error and cleans up', function () {
@@ -104,6 +125,33 @@ it('refuses a body file outside the bodies folder', function () {
     Process::assertNothingRan();
     Log::shouldHaveReceived('critical')->once();
 });
+
+it('builds a generator keycap body with a circle base shape and a Body part', function () {
+    $this->clicker->body->update(['model_files' => [], 'config' => ClickerBody::sampleConfig()]);
+    $this->clicker->update(['settings' => [
+        'colors' => [
+            ['hex' => '#DC2626', 'height_mm' => 1, 'enabled' => true],
+            ['hex' => '#1D4ED8', 'height_mm' => 2, 'enabled' => true],
+        ],
+        'scale' => 1, 'offset_x' => 0, 'offset_y' => 0, 'outline_mm' => 0, 'outline_hex' => '#111111',
+        'base_shape' => 'circle',
+    ]]);
+
+    $paths = $this->builder->build($this->clicker->load('body'));
+
+    $file = tempnam(sys_get_temp_dir(), 'mx');
+    file_put_contents($file, Storage::disk('local')->get($paths['threemf']));
+    $zip = new ZipArchive;
+    expect($zip->open($file))->toBeTrue();
+    $model = '';
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $model .= $zip->getFromIndex($i);
+    }
+    $zip->close();
+    @unlink($file);
+
+    expect($model)->toContain('Body');
+})->skip(fn () => ! str_starts_with(trim((string) @shell_exec('node --version 2>&1')), 'v'), 'Node is not installed.');
 
 it('builds real print files with node', function () {
     $this->clicker->update(['settings' => [

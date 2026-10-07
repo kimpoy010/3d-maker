@@ -16,8 +16,14 @@ class ClickerBodyFactory extends Factory
             'description' => null,
             'preview_image' => null,
             'model_files' => ['resources/clicker/bodies/placeholder-slab/body.stl'],
-            'config' => ClickerBody::sampleConfig(),
+            'config' => ClickerBody::legacyConfig(),
             'active' => true,
         ];
+    }
+
+    /** The generated Cherry MX keycap body: no model files. */
+    public function keycap(): static
+    {
+        return $this->state(fn () => ['model_files' => [], 'config' => ClickerBody::sampleConfig()]);
     }
 }

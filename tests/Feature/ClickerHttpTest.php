@@ -115,6 +115,41 @@ it('saves a new design with typed settings and its files', function () {
     Storage::disk('local')->assertExists([$clicker->artwork_path, $clicker->thumbnail_path]);
 });
 
+it('stores each valid base shape and defaults a missing one to square', function (?string $shape, string $expected) {
+    $settings = $this->settings;
+    unset($settings['base_shape']);
+    if ($shape !== null) {
+        $settings['base_shape'] = $shape;
+    }
+
+    $this->actingAs($this->user)->post('/clickers', ($this->payload)(['settings' => $settings]))->assertSessionHasNoErrors();
+
+    expect(Clicker::firstOrFail()->settings['base_shape'])->toBe($expected);
+})->with([
+    'square' => ['square', 'square'],
+    'circle' => ['circle', 'circle'],
+    'trace' => ['trace', 'trace'],
+    'missing' => [null, 'square'],
+]);
+
+it('rejects an unknown base shape', function () {
+    $this->actingAs($this->user)
+        ->post('/clickers', ($this->payload)(['settings' => array_replace($this->settings, ['base_shape' => 'hexagon'])]))
+        ->assertSessionHasErrors('settings.base_shape');
+
+    expect(Clicker::count())->toBe(0);
+});
+
+it('hands the generator and keycap config of a body to the editor', function () {
+    ClickerBody::query()->delete();
+    ClickerBody::factory()->keycap()->create();
+
+    $this->actingAs($this->user)->get('/clickers/create')->assertInertia(fn (Assert $page) => $page
+        ->where('bodies.0.config.generator', 'mx_keycap')
+        ->where('bodies.0.config.keycap.size', 30)
+        ->missing('bodies.0.model_files'));
+});
+
 it('validates the form and creates nothing', function (string $field, array $override) {
     $this->actingAs($this->user)->post('/clickers', ($this->payload)($override))->assertSessionHasErrors($field);
 

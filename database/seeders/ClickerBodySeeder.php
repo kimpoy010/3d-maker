@@ -9,20 +9,15 @@ class ClickerBodySeeder extends Seeder
 {
     public function run(): void
     {
-        // A development stand-in. Replace it with the real, print-tested clicker bodies before launch:
-        // drop each body's STL/3MF into resources/clicker/bodies/<slug>/ and add an entry like this one.
-        // Created once and never touched again, so deactivating it sticks; never created in production.
-        if (app()->isProduction()) {
-            return;
-        }
-
+        // Created once and never touched again, so an operator deactivating it sticks.
+        // The body is generated in code (no model files); the stem numbers live in its config.
         ClickerBody::firstOrCreate(
-            ['slug' => 'placeholder-slab'],
+            ['slug' => 'cherry-mx-keycap'],
             [
-                'name' => 'Placeholder slab (development only)',
-                'description' => 'A plain rounded slab used until the real clicker bodies are added. It has no switch cavity.',
+                'name' => 'Cherry MX keycap',
+                'description' => 'A 30 mm keycap with a Cherry MX cross socket. Choose a square, circle or traced base.',
                 'preview_image' => null,
-                'model_files' => ['resources/clicker/bodies/placeholder-slab/body.stl'],
+                'model_files' => [],
                 'config' => ClickerBody::sampleConfig(),
                 'active' => true,
             ],

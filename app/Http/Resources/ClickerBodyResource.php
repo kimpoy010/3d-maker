@@ -19,7 +19,7 @@ class ClickerBodyResource extends JsonResource
             'description' => $this->description,
             'preview' => $this->preview_image ? '/'.$this->preview_image : null,
             // The model files stay on the server; the browser only needs the numbers that drive the preview.
-            'config' => Arr::only($this->config, ['cap', 'artwork_area', 'max_layer_height', 'min_feature', 'switch']),
+            'config' => Arr::only($this->config, ['generator', 'keycap', 'cap', 'artwork_area', 'max_layer_height', 'min_feature', 'switch']),
         ];
     }
 }

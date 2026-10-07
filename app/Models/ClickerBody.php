@@ -32,13 +32,40 @@ class ClickerBody extends Model
     }
 
     /**
-     * A plain development body: 40 x 50 mm rounded cap whose top surface is 6 mm above the build plate.
-     * All values are millimetres. `inset` keeps artwork that far inside the cap edge; `min_feature` is the
-     * smallest detail that prints cleanly; `max_layer_height` caps how tall a colour may rise.
+     * The generated Cherry MX keycap body. The browser and the build script create the mesh from `keycap`
+     * (see resources/clicker/geometry.js); `cap` and `artwork_area` describe the default square shape.
+     * All values are millimetres. `stem` holds the cross socket numbers to tune after a test print.
      *
      * @return array<string, mixed>
      */
     public static function sampleConfig(): array
+    {
+        return [
+            'generator' => 'mx_keycap',
+            'cap' => ['shape' => 'rounded', 'width' => 30, 'height' => 30, 'corner_radius' => 4, 'top_z' => 8, 'inset' => 0],
+            'artwork_area' => ['cx' => 0, 'cy' => 0, 'width' => 26, 'height' => 26],
+            'max_layer_height' => 3,
+            'min_feature' => 0.8,
+            'switch' => 'Cherry MX',
+            'keycap' => [
+                'size' => 30,
+                'rim' => 2,
+                'corner_radius' => 4,
+                'height' => 8,
+                'socket_depth' => 4.5,
+                'stem' => ['span' => 4.2, 'arm' => 1.35, 'wall' => 1.2],
+            ],
+        ];
+    }
+
+    /**
+     * A plain development body: 40 x 50 mm rounded cap whose top surface is 6 mm above the build plate,
+     * backed by a static model file. Kept for tests. `inset` keeps artwork that far inside the cap edge;
+     * `min_feature` is the smallest detail that prints cleanly; `max_layer_height` caps how tall a colour may rise.
+     *
+     * @return array<string, mixed>
+     */
+    public static function legacyConfig(): array
     {
         return [
             'cap' => ['shape' => 'rounded', 'width' => 40, 'height' => 50, 'corner_radius' => 6, 'top_z' => 6, 'inset' => 0.5],

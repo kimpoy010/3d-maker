@@ -62,7 +62,8 @@ class NodeClickerBuilder implements ClickerBuilder
         $root = realpath(resource_path('clicker/bodies'));
 
         $bodyFiles = [];
-        foreach ($body->model_files as $relative) {
+        // A generator body has no model files: its part comes from the geometry module.
+        foreach ($body->model_files ?? [] as $relative) {
             $absolute = realpath(base_path($relative));
 
             // Only files inside the bodies folder may ever be handed to the script.
@@ -84,7 +85,7 @@ class NodeClickerBuilder implements ClickerBuilder
         $disk->copy($clicker->artwork_path, "{$job}/artwork.png");
         $disk->put("{$job}/job.json", json_encode([
             'settings' => $clicker->settings,
-            'body' => Arr::only($body->config, ['cap', 'artwork_area', 'max_layer_height', 'min_feature']),
+            'body' => Arr::only($body->config, ['generator', 'keycap', 'cap', 'artwork_area', 'max_layer_height', 'min_feature']),
             'bodyFiles' => $bodyFiles,
             'title' => Str::limit($clicker->name, 60, ''),
             'folder' => "clicker-{$clicker->id}",
