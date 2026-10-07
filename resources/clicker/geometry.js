@@ -50,9 +50,14 @@ function subsample(labels, width, height, factor) {
     return { labels: out, width: w, height: h };
 }
 
-/** The artwork as the pipeline sees it: a plain background made transparent unless `remove_background` is false. */
-export function prepareArtwork(image, settings) {
-    return settings?.remove_background !== false ? removeBackground(image) : image;
+/**
+ * The artwork as the pipeline sees it. A plain background is made transparent: by default for a generated
+ * keycap body unless `remove_background` is false; for a legacy body only when `remove_background` is true.
+ */
+export function prepareArtwork(image, settings, body) {
+    const on = isGenerated(body) ? settings?.remove_background !== false : settings?.remove_background === true;
+
+    return on ? removeBackground(image) : image;
 }
 
 /**
@@ -67,7 +72,7 @@ export function prepareArtwork(image, settings) {
  * @returns analysis; for generated bodies `cap` = {outline, stem} and `blockers` lists reasons the cap cannot be built
  */
 export function analyzeArtwork(source, settings, body, quality = 'preview') {
-    const image = prepareArtwork(source, settings);
+    const image = prepareArtwork(source, settings, body);
     const generated = isGenerated(body);
     const keycap = generated ? keycapConfig(body) : null;
     const shape = generated ? baseShape(settings) : null;

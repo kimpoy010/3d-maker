@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { analyzeArtwork, prepareArtwork, suggestPalette } from '../geometry.js';
 import { removeBackground } from '../raster.js';
-import { KEYCAP_BODY, SETTINGS, makeImage } from './helpers.js';
+import { BODY, KEYCAP_BODY, SETTINGS, makeImage } from './helpers.js';
 
 const SIZE = 300;
 const WHITE = [255, 255, 255];
@@ -119,7 +119,7 @@ test('suggestPalette on the prepared logo has no white', () => {
         return d < 100 ? BLUE : WHITE;
     });
     const before = suggestPalette(plain, 3);
-    const palette = suggestPalette(prepareArtwork(plain, {}), 3);
+    const palette = suggestPalette(prepareArtwork(plain, {}, KEYCAP_BODY), 3);
 
     assert.ok(
         before.some((hex) => hex === '#FFFFFF'),
@@ -132,6 +132,93 @@ test('suggestPalette on the prepared logo has no white', () => {
 test('prepareArtwork returns the image itself when remove_background is false', () => {
     const image = logo();
 
-    assert.equal(prepareArtwork(image, { remove_background: false }), image);
-    assert.ok(count(prepareArtwork(image, {}), (a) => a === 0) > 0);
+    assert.equal(prepareArtwork(image, { remove_background: false }, KEYCAP_BODY), image);
+    assert.ok(count(prepareArtwork(image, {}, KEYCAP_BODY), (a) => a === 0) > 0);
+});
+
+test('legacy bodies keep their pixels unless remove_background is true', () => {
+    const image = logo();
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const base = analyzeArtwork(image, SETTINGS, BODY, 'preview');
+
+    assert.equal(prepareArtwork(image, {}, BODY), image);
+    assert.ok(same(analyzeArtwork(image, SETTINGS, BODY, 'preview').polygons, base.polygons));
+    assert.ok(!same(analyzeArtwork(image, { ...SETTINGS, remove_background: true }, BODY, 'preview').polygons, base.polygons));
+    assert.equal(alphaAt(prepareArtwork(image, { remove_background: true }, BODY), 2, 2), 0);
+});
+
+test('flat artwork is not erased', () => {
+    const flat = makeImage(100, 400, () => BLUE);
+    const out = removeBackground(flat);
+
+    assert.deepEqual(Array.from(out.data), Array.from(flat.data));
+});
+
+test('only opaque border pixels count: dark art under a transparent border is kept', () => {
+    const image = makeImage(SIZE, SIZE, (x, y) => {
+        if (x === 0 || y === 0 || x === SIZE - 1 || y === SIZE - 1) return [0, 0, 0, 0];
+
+        return [10, 10, 10];
+    });
+    const out = removeBackground(image);
+
+    assert.deepEqual(Array.from(out.data), Array.from(image.data));
+});
+
+test('a mid-grey ring beyond the tolerance is kept, and too many such border pixels abort', () => {
+    const ring = makeImage(SIZE, SIZE, (x, y) => {
+        if (x < 10 || y < 10 || x >= SIZE - 10 || y >= SIZE - 10) return WHITE;
+        if (x < 20 || y < 20 || x >= SIZE - 20 || y >= SIZE - 20) return [128, 128, 128];
+
+        return Math.hypot(x - 150, y - 150) < 100 ? BLUE : [200, 255, 200];
+    });
+    const out = removeBackground(ring);
+    assert.equal(alphaAt(out, 3, 3), 0);
+    assert.equal(alphaAt(out, 15, 15), 255);
+
+    const mostlyGrey = makeImage(SIZE, SIZE, (x, y) => (y === 0 && x < 30 ? WHITE : [128, 128, 128]));
+    const kept = removeBackground(mostlyGrey);
+    // Grey is the dominant border colour here, so it is the background; the 30 white pixels differ and stay.
+    assert.equal(alphaAt(kept, 100, 0), 255);
+    const split = makeImage(SIZE, SIZE, (x, y) =>
+        y === 0 || y === SIZE - 1 ? WHITE : x === 0 ? [128, 128, 128] : x === SIZE - 1 ? [30, 30, 30] : BLUE,
+    );
+    assert.deepEqual(Array.from(removeBackground(split).data), Array.from(split.data));
+});
+
+test('tiny images do not crash', () => {
+    for (const [w, h] of [
+        [1, 1],
+        [1, 7],
+        [7, 1],
+    ]) {
+        const out = removeBackground(makeImage(w, h, () => WHITE));
+        assert.equal(out.data.length, w * h * 4);
+    }
+});
+
+test('a jpeg-style noisy border within the tolerance is removed', () => {
+    let seed = 3;
+    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const image = makeImage(SIZE, SIZE, (x, y) => {
+        if (Math.hypot(x - 150, y - 150) < 100) return BLUE;
+        const j = () => 255 - Math.floor(rand() * 20);
+
+        return [j(), j(), j()];
+    });
+    const out = removeBackground(image);
+
+    assert.equal(alphaAt(out, 0, 0), 0);
+    assert.equal(alphaAt(out, 150, 150), 255);
+    assert.ok(count(out, (a) => a === 0) > SIZE * SIZE * 0.2);
+});
+
+test('a 2048 x 2048 image is processed quickly', () => {
+    const big = makeImage(2048, 2048, (x, y) => (Math.hypot(x - 1024, y - 1024) < 700 ? BLUE : WHITE));
+    const start = performance.now();
+    removeBackground(big);
+    const ms = performance.now() - start;
+    console.log(`removeBackground 2048x2048: ${ms.toFixed(0)} ms`);
+
+    assert.ok(ms < 1000, `took ${ms} ms`);
 });

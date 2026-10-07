@@ -55,22 +55,27 @@ export function downscale(image, maxSide) {
  */
 export function removeBackground(image, tolerance = 48) {
     const { data, width, height } = image;
-    const out = { data: Uint8ClampedArray.from(data), width, height };
+    const out = { data: new Uint8ClampedArray(data), width, height };
     const n = width * height;
 
-    let clear = 0;
-    for (let i = 0; i < n; i++) if (data[i * 4 + 3] < 128) clear++;
-    if (clear > n * 0.02) return out;
+    let opaque = 0;
+    for (let i = 0; i < n; i++) if (data[i * 4 + 3] >= 128) opaque++;
+    if (opaque < n * 0.98) return out; // already has real transparency
 
+    // Opaque border pixels only.
     const border = [];
+    const addBorder = (p) => {
+        if (data[p * 4 + 3] >= 128) border.push(p);
+    };
     for (let x = 0; x < width; x++) {
-        border.push(x);
-        if (height > 1) border.push((height - 1) * width + x);
+        addBorder(x);
+        if (height > 1) addBorder((height - 1) * width + x);
     }
     for (let y = 1; y < height - 1; y++) {
-        border.push(y * width);
-        if (width > 1) border.push(y * width + width - 1);
+        addBorder(y * width);
+        if (width > 1) addBorder(y * width + width - 1);
     }
+    if (border.length === 0) return out;
 
     const median = (channel) => {
         const values = border.map((p) => data[p * 4 + channel]).sort((a, b) => a - b);
@@ -81,6 +86,7 @@ export function removeBackground(image, tolerance = 48) {
     const limit = tolerance * tolerance;
     const matches = (p) => {
         const o = p * 4;
+        if (data[o + 3] < 128) return false;
         const dr = data[o] - bg[0];
         const dg = data[o + 1] - bg[1];
         const db = data[o + 2] - bg[2];
@@ -88,32 +94,47 @@ export function removeBackground(image, tolerance = 48) {
         return dr * dr + dg * dg + db * db <= limit;
     };
 
-    if (border.filter(matches).length < border.length * 0.85) return out;
+    let matching = 0;
+    for (const p of border) if (matches(p)) matching++;
+    if (matching < border.length * 0.85) return out;
 
     const seen = new Uint8Array(n);
-    const stack = [];
+    const stack = new Int32Array(n);
+    let top = 0;
     for (const p of border) {
         if (!seen[p] && matches(p)) {
             seen[p] = 1;
-            stack.push(p);
+            stack[top++] = p;
         }
     }
-    while (stack.length) {
-        const p = stack.pop();
-        out.data[p * 4 + 3] = 0;
+    const reached = new Int32Array(n);
+    let cleared = 0;
+    while (top > 0) {
+        const p = stack[--top];
+        reached[cleared++] = p;
         const x = p % width;
-        const around = [];
-        if (x > 0) around.push(p - 1);
-        if (x < width - 1) around.push(p + 1);
-        if (p >= width) around.push(p - width);
-        if (p < n - width) around.push(p + width);
-        for (const q of around) {
-            if (!seen[q] && matches(q)) {
-                seen[q] = 1;
-                stack.push(q);
-            }
+        let q;
+        if (x > 0 && !seen[(q = p - 1)] && matches(q)) {
+            seen[q] = 1;
+            stack[top++] = q;
+        }
+        if (x < width - 1 && !seen[(q = p + 1)] && matches(q)) {
+            seen[q] = 1;
+            stack[top++] = q;
+        }
+        if (p >= width && !seen[(q = p - width)] && matches(q)) {
+            seen[q] = 1;
+            stack[top++] = q;
+        }
+        if (p < n - width && !seen[(q = p + width)] && matches(q)) {
+            seen[q] = 1;
+            stack[top++] = q;
         }
     }
+
+    // Flat artwork with no subject: erasing it would leave nothing, so keep it.
+    if (cleared > opaque * 0.98) return out;
+    for (let i = 0; i < cleared; i++) out.data[reached[i] * 4 + 3] = 0;
 
     return out;
 }

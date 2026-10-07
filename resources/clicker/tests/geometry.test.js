@@ -74,7 +74,7 @@ test('a disabled colour leaves no part', () => {
 
 test('artwork larger than the cap is cut to the cap outline', () => {
     const tall = makeImage(100, 400, () => [29, 78, 216]);
-    const { parts } = build({ ...SETTINGS, colors: [SETTINGS.colors[0]], scale: 1, remove_background: false }, tall);
+    const { parts } = build({ ...SETTINGS, colors: [SETTINGS.colors[0]], scale: 1 }, tall);
     const [minX, minY, , maxX, maxY] = bounds(parts[0]);
 
     assert.ok(minX >= -19.6 && maxX <= 19.6 && minY >= -24.6 && maxY <= 24.6);

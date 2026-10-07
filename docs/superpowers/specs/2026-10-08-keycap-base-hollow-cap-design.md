@@ -19,7 +19,7 @@ The first keycap release produced only the cap. A usable clicker is two printed 
 
 ## Background removal
 
-`removeBackground(image)` in `raster.js`, used by `analyzeArtwork` when `settings.remove_background` is true, and exported as `prepareArtwork(image, settings)` so the editor's palette suggestion sees the same pixels.
+`removeBackground(image)` in `raster.js`, used by `analyzeArtwork` for generated keycap bodies unless `settings.remove_background` is false (legacy bodies only when it is true), and exported as `prepareArtwork(image, settings, body)` so the editor's palette suggestion sees the same pixels.
 1. Do nothing if the image already has real transparency (more than 2 percent of pixels with alpha below 128).
 2. Take the opaque border pixels (the outer ring of the image). Their dominant colour (median per channel) is the background candidate. Require at least 85 percent of border pixels within RGB distance 48 of it; otherwise do nothing.
 3. Flood fill from every border pixel that is within distance 48 of the candidate (4-connected, matching the same tolerance against the candidate colour, not against the neighbour) and set alpha 0 on the reached pixels. Interior regions of the same colour that the flood does not reach stay (letters, holes).
