@@ -1,6 +1,6 @@
 # Keycap base, hollow cap option and background removal: design
 
-Status: Implemented. Requested by the owner in chat on 2026-10-08 ("build the base now", "add an option for the user if they want a hollow cap or not"; the background fix was agreed in the same thread). Extends `2026-10-07-cherry-mx-keycap-body-design.md`.
+Status: Implemented. Note: the Base paragraph and the base-fit blocker of this spec are superseded by `2026-10-08-base-socket-redesign-design.md` (open-top base the cap slides into, closed bottom); everything else here stands. Requested by the owner in chat on 2026-10-08 ("build the base now", "add an option for the user if they want a hollow cap or not"; the background fix was agreed in the same thread). Extends `2026-10-07-cherry-mx-keycap-body-design.md`.
 
 ## Why
 

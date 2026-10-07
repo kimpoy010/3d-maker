@@ -1,6 +1,6 @@
 # Open-top base the cap slides into: design
 
-Status: requested by the owner in chat on 2026-10-08 (screenshots of the editor and of the same artwork in another vendor's generator). Supersedes the "Base" paragraph and the base-fit blocker of `2026-10-08-keycap-base-hollow-cap-design.md`; everything else there stands.
+Status: Implemented. Requested by the owner in chat on 2026-10-08 (screenshots of the editor and of the same artwork in another vendor's generator). Supersedes the "Base" paragraph and the base-fit blocker of `2026-10-08-keycap-base-hollow-cap-design.md`; everything else there stands.
 
 ## Why
 

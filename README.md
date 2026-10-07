@@ -127,7 +127,7 @@ The user picks a base shape in the editor (saved as `settings.base_shape`, defau
 
 - **Square**: a rounded square keycap outline.
 - **Circle**: a round outline.
-- **Trace**: follows the silhouette of the uploaded artwork. It needs a plain or transparent background (see Remove background below); a busy background gives a blocky outline. The shape must be roughly 26 mm across (round) to hold the base; if it is smaller a red message appears ("This shape is too small to hold the switch base. Make the artwork larger or choose Square or Circle."), so make the artwork larger or use Square or Circle. The position (left/right, up/down) sliders are hidden for Trace because they would move the whole keycap; any saved offsets still apply.
+- **Trace**: follows the silhouette of the uploaded artwork. It needs a plain or transparent background (see Remove background below); a busy background gives a blocky outline. The shape must be large enough to hold the switch: a 15.7 mm square (the 14.1 mm cutout plus a 0.8 mm margin on each side) centred on the stem must fit inside the cap outline (the artwork silhouette plus the 2 mm rim), and the 16.2 mm pocket square must fit inside the base outline. If not, a red message appears ("This shape is too small to hold the switch base. Make the artwork larger or choose Square or Circle.") and the preview empties; make the artwork larger or use Square or Circle. In practice ordinary logos pass; the owner's real test artwork passes at 100 percent artwork size and is blocked below about 80 percent. The position (left/right, up/down) sliders are hidden for Trace because they would move the whole keycap; any saved offsets still apply.
 
 All sizes are millimetres and live in the body config under `keycap` (defaults from `ClickerBody::sampleConfig()`): `size` 30, `rim` 2, `corner_radius` 4, `height` 8, `socket_depth` 4.5, and the cross-socket numbers `stem.span` 4.2, `stem.arm` 1.35, `stem.wall` 1.2. The stem numbers have not been tested on a real switch.
 
@@ -136,9 +136,9 @@ All sizes are millimetres and live in the body config under `keycap` (defaults f
 How each piece prints:
 
 - **Cap**: upright, as modelled (cross socket facing the plate). The solid cap prints without supports. The hollow cap needs supports under its cavity roof.
-- **Base**: upright, plate down, with its open top facing up, placed beside the cap, so it sits flat on the bed. No supports. It is slightly bigger than the cap (`clearance` on each side) so the cap slides in, and it has a cutout in the plate for the switch. The bottom is closed: a solid floor (`floor`, 1.5 mm) covers the whole outline, and the switch sits in an enclosed pocket above it. The switch is reached only through the 14.1 mm cutout in the plate, so there is no opening underneath: trim the switch's PCB pins (or use a pinless switch) before fitting it.
+- **Base**: upright, with its open top facing up, placed beside the cap, so it sits flat on the bed. No supports. It is open on top and slightly bigger than the cap (0.3 mm `clearance` and a 2.0 mm `wall` all round) so the cap slides in. It is closed at the bottom: a solid 1.5 mm floor covers the whole outline, and the switch sits in an enclosed 5.5 mm pocket under the plate, reached only through the 14.1 mm cutout in the plate. There is no opening underneath, so the switch's PCB pins must be trimmed (or the switch must be pinless) before fitting it.
 
-**Cap depth inside base** (`settings.cap_insertion`, a fraction from 0.5 to 1, default 0.5, shown in the editor as a 50 to 100 percent slider for generated bodies). It sets how far the cap sits inside the base at rest: the rim of the base stands at that fraction of the cap height, so the cap always slides in at least half way. A deeper cap makes a taller base. The cap's travel is limited by the gap left under it, so a solid cap, which is shorter inside, gives less key travel than a hollow cap. Designs saved without the setting read as 0.5. Legacy bodies ignore it.
+**Cap depth inside base** (`settings.cap_insertion`, a fraction from 0.5 to 1, default 0.5, shown in the editor as a 50 to 100 percent slider for generated bodies). It sets how far the cap sits inside the base at rest: the rim of the base stands at that fraction of the cap height, so the cap always slides in at least half way. A deeper cap makes a taller base. `rest_gap` decides where the cap sits above the plate. A solid cap has a flat bottom that meets the switch housing sooner, so it gives less key travel than a hollow cap; **Hollow cap** is the better match to a real keycap. Designs saved without the setting read as 0.5. Legacy bodies ignore it.
 
 Options that come with the keycap body (saved in the design's `settings`):
 
@@ -158,7 +158,7 @@ Change them in the active body's row (its `config` JSON, replacing or merging th
 **Launch checklist.**
 
 - [ ] Node is installed on the queue-worker host, together with the build dependencies (`earcut`, `fflate` and `pngjs` are runtime `dependencies`, so `npm ci --omit=dev` is enough).
-- [ ] Print one cap and one base and fit a real Cherry MX switch; adjust `keycap.stem`, `keycap.base` and `keycap.hollow` in the body config (the existing row is not overwritten by re-seeding; edit it or add a new body).
+- [ ] Print one cap and one base, fit a real Cherry MX switch (pins trimmed), then tune `rest_gap`, `under`, `floor`, `cavity`, `clearance` and `cutout` (and `keycap.stem`, `keycap.hollow` if the cross socket or hollow cap needs it) in the active body's config row; re-seeding does not overwrite an existing body.
 - [ ] Slice the cap and base in the slicer's default (Regular) mode and check the cross socket in the layer preview.
 - [ ] The old development body `placeholder-slab`, if it exists in the database, is deactivated (`active = false`). The seeder no longer creates it.
 - [ ] Click both download links (3MF and STL zip) of an unlocked design in a real browser and open the files in a slicer.
