@@ -127,28 +127,37 @@ The user picks a base shape in the editor (saved as `settings.base_shape`, defau
 
 - **Square**: a rounded square keycap outline.
 - **Circle**: a round outline.
-- **Trace**: follows the silhouette of the uploaded artwork. It needs transparent or clean artwork (a clear background); a busy or solid-background image gives a blocky outline. The position (left/right, up/down) sliders are hidden for Trace because they would move the whole keycap; any saved offsets still apply.
+- **Trace**: follows the silhouette of the uploaded artwork. It needs a plain or transparent background (see Remove background below); a busy background gives a blocky outline. The shape must be roughly 26 mm across (round) to hold the base; if it is smaller a red message appears ("This shape is too small to hold the switch base. Make the artwork larger or choose Square or Circle."), so make the artwork larger or use Square or Circle. The position (left/right, up/down) sliders are hidden for Trace because they would move the whole keycap; any saved offsets still apply.
 
 All sizes are millimetres and live in the body config under `keycap` (defaults from `ClickerBody::sampleConfig()`): `size` 30, `rim` 2, `corner_radius` 4, `height` 8, `socket_depth` 4.5, and the cross-socket numbers `stem.span` 4.2, `stem.arm` 1.35, `stem.wall` 1.2. The stem numbers have not been tested on a real switch.
 
-Print the cap upright, without supports: the body is solid and the cross socket opens at the bottom. The body is a single closed solid with the cross socket open at the bottom.
+**Two printed pieces.** Every build produces a **Cap** (the colour parts plus the body, one closed solid with the cross socket open at the bottom) and a **Base** (the housing that holds the Cherry MX switch). The 3MF has the colour parts and the `Cap` and `Base` objects. The STL zip has one file per piece: `NN-colour-<hex>.stl` for each colour, `NN-cap.stl` and `NN-base.stl` (NN is the running number).
 
-Three more options come with the keycap body:
+How each piece prints:
 
-- **Base.** Every build also includes a switch base (a housing with a cutout for the switch) placed beside the cap, flipped so its plate is on the build plate. It prints plate-down, so it needs no supports. Its numbers are in the body config under `keycap.base`: `height` 12, `plate` 1.5, `wall` 2.0, `cutout` 14.1, `gap` 4.0 (to the cap), `spacing` 10 (between parts) and `hex` `#6B7280`.
-- **Hollow cap** (`settings.hollow_cap`, default off). The cap becomes a shell with a cavity under the roof; the numbers are `keycap.hollow`: `wall` 1.6, `plate` 2.0 and `boss_radius` 3.6 (the boss around the stem). Printed upright, the cavity roof needs supports. If the shape is too small for a cavity, the cap stays solid and the editor says so.
-- **Background removal** (`settings.remove_background`, default on). A plain background colour touching the artwork edge is made transparent before the build, so it does not become part of the print. Turn it off for artwork that really has a solid background. Designs saved before these two settings read as hollow off and background removal on.
+- **Cap**: upright, as modelled (cross socket facing the plate). The solid cap prints without supports. The hollow cap needs supports under its cavity roof.
+- **Base**: exported already flipped, plate down, and placed beside the cap, so it sits flat on the bed. No supports.
 
-The numbers are tuneable in the body config. A re-seed does not overwrite an existing body, so edit the row's `config` JSON (or merge the `keycap.hollow` and `keycap.base` blocks into it) on a database that already has the keycap body.
+Options that come with the keycap body (saved in the design's `settings`):
 
-Re-seeding does NOT overwrite an existing body, so to change the numbers edit the body's row (its `config` JSON) or add a new body. Also change `sampleConfig()` for new installs. The app is reached at the `php artisan serve` address (<http://127.0.0.1:8000>) with `npm run dev` running alongside.
+- **Hollow cap** (`hollow_cap`, default off). The cap becomes a shell with a cavity under the roof, with a boss around the stem. This saves material, but the cavity roof needs supports when printed upright. If the shape is too small for a cavity, the cap stays solid and the editor says so.
+- **Remove background** (`remove_background`). A single plain background colour that touches the artwork's edge is made transparent before the build, so it does not become part of the print (useful for JPGs and white-background PNGs, and it is what lets Trace follow the subject). It needs a plain background: a busy or noisy edge is left unchanged, as is an image that is already transparent. Only background connected to the edge is removed, so interior regions of the same colour (letters, holes) stay. It is on by default for keycap bodies; designs saved before this setting read as off for old bodies (and hollow off). Turn the toggle off for artwork that really has a solid background.
+
+**Numbers that are guesses.** These come from public MX plate guidance and common practice and have not been tested on a real printer or switch. All are millimetres under `keycap` in the body config, with these defaults:
+
+- `keycap.stem`: `span` 4.2, `arm` 1.35, `wall` 1.2 (the cross socket).
+- `keycap.hollow`: `wall` 1.6, `plate` 2.0, `boss_radius` 3.6.
+- `keycap.base`: `height` 12, `plate` 1.5, `wall` 2.0, `cutout` 14.1, `gap` 4.0 (preview gap to the cap), `spacing` 10 (between printed parts), `hex` `#6B7280`.
+
+Change them in the active body's row (its `config` JSON, merging the `keycap.stem`, `keycap.hollow` and `keycap.base` blocks). A re-seed does NOT overwrite an existing body; also change `sampleConfig()` for new installs, or add a new body. The app is reached at the `php artisan serve` address (<http://127.0.0.1:8000>) with `npm run dev` running alongside.
 
 **Adding another clicker body.** Static bodies are model files you have printed and tested. Put the STL (or several) in `resources/clicker/bodies/<slug>/` and add an entry to `database/seeders/ClickerBodySeeder.php` with the cap size, the artwork area, the highest layer, the smallest printable detail and the switch it takes (see `ClickerBody::legacyConfig()` for every field and its unit).
 
 **Launch checklist.**
 
 - [ ] Node is installed on the queue-worker host, together with the build dependencies (`earcut`, `fflate` and `pngjs` are runtime `dependencies`, so `npm ci --omit=dev` is enough).
-- [ ] Print one test cap on a real Cherry MX switch and adjust `keycap.stem` in the body config (the existing row is not overwritten by re-seeding; edit it or add a new body).
+- [ ] Print one cap and one base and fit a real Cherry MX switch; adjust `keycap.stem`, `keycap.base` and `keycap.hollow` in the body config (the existing row is not overwritten by re-seeding; edit it or add a new body).
+- [ ] Slice the cap and base in the slicer's default (Regular) mode and check the cross socket in the layer preview.
 - [ ] The old development body `placeholder-slab`, if it exists in the database, is deactivated (`active = false`). The seeder no longer creates it.
 - [ ] Click both download links (3MF and STL zip) of an unlocked design in a real browser and open the files in a slicer.
 
