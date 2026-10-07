@@ -8,12 +8,13 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
 import { analyzeArtwork, buildParts } from '../geometry.js';
-import { baseFits, buildBase, keycapConfig, squareOutline } from '../keycap.js';
-import { bounds, isClosedManifold, meshVolume } from '../mesh.js';
+import { baseFits, buildBase, capInsertion, circleOutline, growOutline, keycapConfig, squareOutline } from '../keycap.js';
+import { bounds, extrudePolygons, isClosedManifold, meshVolume } from '../mesh.js';
 import { pointInPolygons } from '../solids.js';
 import { parseStl } from '../stl.js';
+import { traceOutline } from '../trace-outline.js';
 import { signedArea } from '../trace.js';
-import { KEYCAP_BODY, SETTINGS, logoArtwork, makeImage, materialAlong } from './helpers.js';
+import { KEYCAP_BODY, SETTINGS, logoArtwork, makeImage, materialAlong, ownerLikeLogo } from './helpers.js';
 
 const BUILD = fileURLToPath(new URL('../build.mjs', import.meta.url));
 const FIT_BLOCKER = 'This shape is too small to hold the switch base. Make the artwork larger or choose Square or Circle.';
@@ -21,13 +22,16 @@ const FAILED_BLOCKER = 'The switch base could not be built for this shape. Make 
 const EPS = 1e-3;
 
 const keycap = keycapConfig({});
-const { height: HB, plate: PLATE, cutout: CUT, gap: GAP, spacing: SPACING } = keycap.base;
+const { clearance: CLEARANCE, wall: WALL, plate: PLATE, under: UNDER, cavity: CAVITY, cutout: CUT, rest_gap: REST, spacing: SPACING } = keycap.base;
+const FLOOR = UNDER + PLATE;
+const topFor = (insertion) => FLOOR + REST + insertion * keycap.height;
+const TOP = topFor(0.5);
 
 const near = (actual, expected, relative, label) =>
     assert.ok(Math.abs(actual - expected) <= Math.abs(expected) * relative, `${label}: ${actual} vs ${expected}`);
 
-const polygonArea = (polygons) =>
-    polygons.reduce((sum, { outer, holes }) => sum + Math.abs(signedArea(outer)) - holes.reduce((s, h) => s + Math.abs(signedArea(h)), 0), 0);
+const area = (ring) => Math.abs(signedArea(ring));
+const whole = (ring) => [{ outer: ring, holes: [] }];
 
 const assertIntervals = (actual, expected, label) => {
     assert.equal(actual.length, expected.length, `${label}: ${JSON.stringify(actual)}`);
@@ -36,7 +40,27 @@ const assertIntervals = (actual, expected, label) => {
     });
 };
 
-/** A grid point that `accept`s, at least `margin` from every listed vertex. */
+/** Distance from a point to a closed ring's edges. */
+function distanceToRing([px, py], ring) {
+    let best = Infinity;
+    ring.forEach(([ax, ay], i) => {
+        const [bx, by] = ring[(i + 1) % ring.length];
+        const [dx, dy] = [bx - ax, by - ay];
+        const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy || 1)));
+        best = Math.min(best, Math.hypot(px - ax - t * dx, py - ay - t * dy));
+    });
+
+    return best;
+}
+
+const squareAround = ({ x, y }, half) => [
+    [x - half, y - half],
+    [x + half, y - half],
+    [x + half, y + half],
+    [x - half, y + half],
+];
+
+/** A grid point that `accept`s, at least `margin` from every listed ring edge. */
 function findPoint(rings, accept, margin = 0.3) {
     const vertices = rings.flat();
     const [x0, y0, x1, y1] = vertices.reduce(
@@ -45,148 +69,212 @@ function findPoint(rings, accept, margin = 0.3) {
     );
     for (let y = y0 + 0.0137; y < y1; y += 0.11) {
         for (let x = x0 + 0.0213; x < x1; x += 0.11) {
-            if (!accept([x, y])) continue;
-            if (vertices.every(([vx, vy]) => Math.hypot(vx - x, vy - y) > margin)) return [x, y];
+            if (accept([x, y]) && rings.every((ring) => distanceToRing([x, y], ring) > margin)) return [x, y];
         }
     }
     throw new Error('no point found');
 }
 
-const ringsOf = (polygons) => polygons.flatMap(({ outer, holes }) => [outer, ...holes]);
-
-/** Check the base in its own frame (z 0..height) against the spec, given a transform of points into the part. */
-function checkBase(part, { outline, baseInset: inset, stem }, place = ([x, y]) => [x, y], z = (v) => v) {
-    assert.equal(part.kind, 'base');
-    assert.equal(part.name, 'Base');
-    assert.equal(part.hex, '#6B7280');
-    assert.ok(isClosedManifold(part), 'manifold');
-
-    const expected = Math.abs(signedArea(outline)) * HB - polygonArea(inset) * (HB - PLATE) - CUT * CUT * PLATE;
-    near(meshVolume(part), expected, 0.01, 'volume');
-
-    const zs = [z(0), z(HB)].sort((a, b) => a - b);
-    const [, , z0, , , z1] = bounds(part);
-    assert.ok(Math.abs(z0 - zs[0]) < EPS && Math.abs(z1 - zs[1]) < EPS, `z ${z0}..${z1}`);
-
-    const ray = (point) => materialAlong(part, ...place(point));
-    const span = (a, b) => [[Math.min(z(a), z(b)), Math.max(z(a), z(b))]];
-
-    assertIntervals(ray([stem.x + 0.011, stem.y + 0.007]), [], 'stem ray: nothing in the cutout column');
-    const reach = CUT / 2 + 0.3;
-    const wall = findPoint([outline, ...ringsOf(inset)], (p) => pointInPolygons(p, [{ outer: outline, holes: [] }]) && !pointInPolygons(p, inset));
-    assertIntervals(ray(wall), span(0, HB), 'wall ray');
-    const cavity = findPoint(
-        ringsOf(inset),
-        (p) => pointInPolygons(p, inset) && (Math.abs(p[0] - stem.x) > reach || Math.abs(p[1] - stem.y) > reach),
-    );
-    assertIntervals(ray(cavity), span(HB - PLATE, HB), 'cavity ray: only the plate');
-    const cutoutRim = [stem.x + CUT / 2 - 0.2, stem.y + 0.0071];
-    assertIntervals(ray(cutoutRim), [], 'just inside the cutout');
-}
-
-const analyse = (shape, image = logoArtwork(300), extra = {}) => {
+const analyse = (shape, image, extra = {}) => {
     const settings = { ...SETTINGS, base_shape: shape, ...extra };
     return { settings, analysis: analyzeArtwork(image, settings, KEYCAP_BODY, 'preview') };
 };
 
 const solidBlue = () => makeImage(40, 40, () => [29, 78, 216]);
+const imageFor = (shape) => (shape === 'trace' ? logoArtwork(300) : solidBlue());
 
-test('keycapConfig carries the base defaults and deep merges them', () => {
-    assert.deepEqual(keycap.base, { height: 12, plate: 1.5, wall: 2.0, cutout: 14.1, gap: 4.0, spacing: 10, hex: '#6B7280' });
-    const merged = keycapConfig({ keycap: { base: { height: 14 } } });
-    assert.equal(merged.base.height, 14);
+/**
+ * Check the base against the spec. `dx`, `dz` move the base's own frame (z 0 at its bottom) into the part's frame.
+ */
+function checkBase(part, { baseOutline, pocketOutline, stem }, { dx = 0, dz = 0, top = TOP } = {}) {
+    assert.equal(part.kind, 'base');
+    assert.equal(part.name, 'Base');
+    assert.equal(part.hex, '#6B7280');
+    assert.ok(isClosedManifold(part), 'manifold');
+
+    const expected = area(baseOutline) * top - area(pocketOutline) * (top - FLOOR) - CAVITY * CAVITY * UNDER - CUT * CUT * PLATE;
+    near(meshVolume(part), expected, 0.01, 'volume');
+
+    const [, , z0, , , z1] = bounds(part);
+    assert.ok(Math.abs(z0 - dz) < EPS && Math.abs(z1 - (top + dz)) < EPS, `z ${z0}..${z1}`);
+
+    const ray = ([x, y]) => materialAlong(part, x + dx, y);
+    const at = (intervals) => intervals.map(([a, b]) => [a + dz, b + dz]);
+    const cavitySquare = squareAround(stem, CAVITY / 2);
+
+    assertIntervals(ray([stem.x + 0.011, stem.y + 0.007]), [], 'through the cutout: the cavity, then the open pocket');
+    const plate = [stem.x + (CUT + CAVITY) / 4, stem.y + 0.0071];
+    assertIntervals(ray(plate), at([[UNDER, FLOOR]]), 'through the plate over the cavity');
+    const rim = findPoint(
+        [baseOutline, pocketOutline, cavitySquare],
+        (p) => pointInPolygons(p, whole(baseOutline)) && !pointInPolygons(p, whole(pocketOutline)) && !pointInPolygons(p, whole(cavitySquare)),
+    );
+    assertIntervals(ray(rim), at([[0, top]]), 'through the rim ring');
+    const pocket = findPoint(
+        [pocketOutline, cavitySquare],
+        (p) => pointInPolygons(p, whole(pocketOutline)) && !pointInPolygons(p, whole(cavitySquare)),
+    );
+    assertIntervals(ray(pocket), at([[0, FLOOR]]), 'through the pocket: nothing above the plate');
+}
+
+test('keycapConfig carries the new base defaults, deep merges them and ignores the old keys', () => {
+    assert.deepEqual(keycap.base, {
+        clearance: 0.3,
+        wall: 2.0,
+        plate: 1.5,
+        under: 6.0,
+        cavity: 16.2,
+        cutout: 14.1,
+        rest_gap: 8.0,
+        spacing: 10,
+        hex: '#6B7280',
+    });
+    const merged = keycapConfig({ keycap: { base: { rest_gap: 9 } } });
+    assert.equal(merged.base.rest_gap, 9);
     assert.equal(merged.base.cutout, 14.1);
-    assert.deepEqual(keycapConfig({ keycap: { size: 30 } }).hollow, { wall: 1.6, plate: 2.0, boss_radius: 3.6 });
+
+    // An old row that still carries height and gap builds the same base.
+    const settings = { ...SETTINGS, base_shape: 'square' };
+    const old = analyzeArtwork(solidBlue(), settings, { ...KEYCAP_BODY, keycap: { base: { height: 30, gap: 9 } } }, 'preview');
+    const fresh = analyzeArtwork(solidBlue(), settings, KEYCAP_BODY, 'preview');
+    assert.deepEqual(old.cap.baseBody.positions, fresh.cap.baseBody.positions);
+});
+
+test('capInsertion clamps to 0.5..1 and defaults to 0.5', () => {
+    assert.equal(capInsertion({}), 0.5);
+    assert.equal(capInsertion(undefined), 0.5);
+    assert.equal(capInsertion({ cap_insertion: 0.75 }), 0.75);
+    assert.equal(capInsertion({ cap_insertion: 1 }), 1);
+    assert.equal(capInsertion({ cap_insertion: 0.2 }), 0.5);
+    assert.equal(capInsertion({ cap_insertion: 3 }), 1);
+    assert.equal(capInsertion({ cap_insertion: 'abc' }), 0.5);
+    assert.equal(capInsertion({ cap_insertion: null }), 0.5);
+});
+
+test('growOutline grows the square and circle outlines by the distance, counter-clockwise', () => {
+    for (const [shape, outline] of [
+        ['square', squareOutline(keycap)],
+        ['circle', circleOutline(keycap)],
+    ]) {
+        for (const distance of [CLEARANCE, CLEARANCE + WALL]) {
+            const grown = growOutline(outline, shape, keycap, distance);
+            assert.ok(signedArea(grown) > 0, `${shape} CCW`);
+            near(Math.max(...grown.map((p) => p[0])), 15 + distance, 1e-9, `${shape} reach`);
+            for (const point of grown) {
+                assert.ok(!pointInPolygons(point, whole(outline)), `${shape} vertex outside the cap`);
+                assert.ok(Math.abs(distanceToRing(point, outline) - distance) < 1e-6, `${shape} ${distanceToRing(point, outline)}`);
+            }
+            assert.ok(isClosedManifold(extrudePolygons(whole(grown), 0, 1)));
+        }
+    }
+    const square = growOutline(squareOutline(keycap), 'square', keycap, 2);
+    assert.deepEqual(square, squareOutline({ size: 34, corner_radius: 6 }));
+    assert.deepEqual(growOutline(circleOutline(keycap), 'circle', keycap, 2), circleOutline({ size: 34 }));
+});
+
+test('the trace outline grows its mask by the distance, counter-clockwise', () => {
+    const traced = traceOutline({ image: logoArtwork(200), frame: { left: -15, top: 15, mmPerPx: 30 / 200 }, keycap });
+    const cell = 0.15; // 30 mm over 200 px
+    for (const distance of [CLEARANCE, CLEARANCE + WALL]) {
+        const grown = traced.grow(distance);
+        assert.ok(signedArea(grown) > 0, 'CCW');
+        assert.ok(isClosedManifold(extrudePolygons(whole(grown), 0, 1)));
+        for (const point of grown) {
+            assert.ok(!pointInPolygons(point, whole(traced.outline)), 'outside the cap outline');
+            const d = distanceToRing(point, traced.outline);
+            assert.ok(Math.abs(d - distance) <= cell + 0.03, `grown vertex at ${d} for ${distance}`);
+        }
+        for (const point of traced.outline) {
+            assert.ok(pointInPolygons(point, whole(grown)), 'the cap outline is inside');
+            assert.ok(distanceToRing(point, grown) >= distance - cell - 0.03, `cap vertex ${distanceToRing(point, grown)} from the grown ring`);
+        }
+    }
 });
 
 for (const shape of ['square', 'circle', 'trace']) {
-    test(`${shape} base: one closed shell with the cutout, plate and cavity`, () => {
-        const image = shape === 'trace' ? logoArtwork(300) : solidBlue();
-        const { analysis, settings } = analyse(shape, image);
-        const { stem, baseInset } = analysis.cap;
+    test(`${shape} base: one closed open-top shell with the cavity, plate, cutout and pocket`, () => {
+        const { analysis } = analyse(shape, imageFor(shape));
+        const { outline, stem, baseOutline, pocketOutline, baseBody } = analysis.cap;
 
         assert.deepEqual(analysis.blockers, []);
-        assert.ok(baseInset.length >= 1);
-        assert.ok(baseFits({ inset: baseInset, stem, keycap }));
-
-        const parts = buildParts(analysis, settings, KEYCAP_BODY);
-        assert.deepEqual(
-            parts.slice(-2).map((p) => p.name),
-            ['Cap', 'Base'],
-            'the base comes last, after the cap',
-        );
-        const base = parts.at(-1);
-        // Assembled: the base sits below the cap with the gap.
-        checkBase(base, analysis.cap, undefined, (z) => z - (GAP + HB));
-        const [, , z0, , , z1] = bounds(base);
-        assert.ok(Math.abs(z0 + GAP + HB) < EPS && Math.abs(z1 + GAP) < EPS, `assembled base z ${z0}..${z1}`);
+        assert.ok(signedArea(pocketOutline) > 0 && signedArea(baseOutline) > 0);
+        assert.ok(area(pocketOutline) > area(outline) && area(baseOutline) > area(pocketOutline));
+        assert.ok(baseFits({ cap: whole(outline), base: whole(baseOutline), stem, keycap }));
+        checkBase(baseBody, analysis.cap);
     });
-}
 
-test('the analytic insets are the outline inset by the base wall', () => {
-    for (const shape of ['square', 'circle']) {
-        const { analysis } = analyse(shape, solidBlue());
-        const [{ outer }] = analysis.cap.baseInset;
-        const xs = outer.map((p) => p[0]);
-        near(Math.max(...xs), 15 - 2, 1e-9, `${shape} inset reach`);
-    }
-});
+    test(`${shape} assembled layout: the cap sits in the pocket, its bottom ${REST} mm above the plate`, () => {
+        for (const hollow of [false, true]) {
+            const { analysis, settings } = analyse(shape, imageFor(shape), { hollow_cap: hollow });
+            const parts = buildParts(analysis, settings, KEYCAP_BODY);
+            assert.deepEqual(
+                parts.slice(-2).map((p) => p.name),
+                ['Cap', 'Base'],
+                'the base comes last, after the cap',
+            );
+            const [cap, base] = parts.slice(-2);
+            checkBase(base, analysis.cap, { dz: -(REST + FLOOR) });
+            const [, , bz0, , , bz1] = bounds(base);
+            assert.ok(Math.abs(bz1 - 0.5 * keycap.height) < EPS, `rim at ${bz1}`);
+            assert.ok(Math.abs(bz0 + REST + FLOOR) < EPS);
+            const [, , cz0, , , cz1] = bounds(cap);
+            assert.ok(Math.abs(cz0) < EPS && Math.abs(cz1 - keycap.height) < EPS);
 
-test('the assembled layout keeps the cap and colours exactly where they were', () => {
-    for (const hollow of [false, true]) {
-        const { analysis, settings } = analyse('trace', logoArtwork(300), { hollow_cap: hollow });
-        const assembled = buildParts(analysis, settings, KEYCAP_BODY);
-        const explicit = buildParts(analysis, settings, KEYCAP_BODY, { layout: 'assembled' });
-        const printed = buildParts(analysis, settings, KEYCAP_BODY, { layout: 'print' });
-
-        assert.equal(assembled.length, printed.length);
-        for (let i = 0; i < assembled.length - 1; i++) {
-            assert.deepEqual(printed[i].positions, assembled[i].positions, `${assembled[i].name} unchanged in print`);
-            assert.deepEqual(explicit[i].positions, assembled[i].positions);
+            // The cap outline plus the clearance fits within the pocket.
+            const { outline, pocketOutline, stem } = analysis.cap;
+            // Analytic: the pocket's chords cut its arcs by up to ~0.021 mm (4.3 mm corners in 8 segments); trace: one cell.
+            const slack = shape === 'trace' ? 0.15 : 0.025;
+            for (const point of outline) {
+                assert.ok(pointInPolygons(point, whole(pocketOutline)));
+                assert.ok(distanceToRing(point, pocketOutline) >= CLEARANCE - slack, `${distanceToRing(point, pocketOutline)}`);
+            }
+            // No overlap: under the cap there is no base material above the plate top.
+            for (const [fx, fy] of [
+                [0, 0],
+                [0.4, 0.1],
+                [-0.3, 0.35],
+                [0.1, -0.42],
+                [-0.38, -0.2],
+            ]) {
+                const point = [stem.x + fx * 25, stem.y + fy * 25];
+                if (!pointInPolygons(point, whole(outline))) continue;
+                for (const [, z1] of materialAlong(base, ...point)) assert.ok(z1 <= -REST + EPS, `base material up to ${z1} under the cap`);
+            }
         }
-        assert.deepEqual(explicit.at(-1).positions, assembled.at(-1).positions, 'assembled is the default');
-        const cap = assembled.find((p) => p.name === 'Cap');
-        const [, , cz0, , , cz1] = bounds(cap);
-        assert.ok(Math.abs(cz0) < EPS && Math.abs(cz1 - 8) < EPS);
-        for (const part of assembled.filter((p) => p.kind === 'colour')) assert.ok(Math.abs(bounds(part)[2] - 8) < EPS);
-    }
-});
+    });
 
-for (const shape of ['square', 'circle', 'trace']) {
-    test(`${shape} print layout: the base is flipped plate down and placed clear of the cap`, () => {
-        const image = shape === 'trace' ? logoArtwork(300) : solidBlue();
-        const { analysis, settings } = analyse(shape, image);
-        const parts = buildParts(analysis, settings, KEYCAP_BODY, { layout: 'print' });
-        const base = parts.at(-1);
-        const xs = analysis.cap.outline.map((p) => p[0]);
+    test(`${shape} print layout: the base stands upright beside the cap, clear by the spacing`, () => {
+        const { analysis, settings } = analyse(shape, imageFor(shape));
+        const printed = buildParts(analysis, settings, KEYCAP_BODY, { layout: 'print' });
+        const assembled = buildParts(analysis, settings, KEYCAP_BODY);
+        const base = printed.at(-1);
+        const xs = analysis.cap.baseOutline.map((p) => p[0]);
         const shift = Math.max(...xs) - Math.min(...xs) + SPACING;
 
-        // (x, y, z) -> (x + shift, -y, height - z)
-        checkBase(
-            base,
-            analysis.cap,
-            ([x, y]) => [x + shift, -y],
-            (z) => HB - z,
-        );
+        checkBase(base, analysis.cap, { dx: shift });
         const [bx0] = bounds(base);
-        const capRight = Math.max(...parts.slice(0, -1).map((p) => bounds(p)[3]));
+        near(bx0, Math.max(...xs) + SPACING, 1e-6, 'starts one spacing past the base outline');
+        const capRight = Math.max(...printed.slice(0, -1).map((p) => bounds(p)[3]));
         assert.ok(bx0 >= capRight + SPACING - EPS, `base starts at x ${bx0}, the cap ends at ${capRight}`);
-        near(meshVolume(base), meshVolume(buildParts(analysis, settings, KEYCAP_BODY).at(-1)), 1e-6, 'same volume as assembled');
+        near(meshVolume(base), meshVolume(assembled.at(-1)), 1e-6, 'same volume as assembled');
+        for (let i = 0; i < printed.length - 1; i++) assert.deepEqual(printed[i].positions, assembled[i].positions, `${printed[i].name} unchanged`);
     });
 }
 
-test('the hollow cap and the base build together', () => {
-    const { analysis, settings } = analyse('square', solidBlue(), { hollow_cap: true });
-    const parts = buildParts(analysis, settings, KEYCAP_BODY);
-    const cap = parts.find((p) => p.name === 'Cap');
-
-    assert.equal(cap, parts.at(-2));
-    near(meshVolume(cap), meshVolume(analysis.cap.hollowBody), 1e-9, 'the hollow cap is used');
-    checkBase(parts.at(-1), analysis.cap, undefined, (z) => z - (GAP + HB));
+test('cap_insertion 0.5 and 1.0 set the rim height', () => {
+    for (const insertion of [0.5, 1]) {
+        const { analysis, settings } = analyse('square', solidBlue(), { cap_insertion: insertion });
+        checkBase(analysis.cap.baseBody, analysis.cap, { top: topFor(insertion) });
+        const base = buildParts(analysis, settings, KEYCAP_BODY).at(-1);
+        assert.ok(Math.abs(bounds(base)[5] - insertion * keycap.height) < EPS, `rim at ${bounds(base)[5]}`);
+        const printed = buildParts(analysis, settings, KEYCAP_BODY, { layout: 'print' }).at(-1);
+        assert.ok(Math.abs(bounds(printed)[2]) < EPS && Math.abs(bounds(printed)[5] - topFor(insertion)) < EPS);
+    }
+    assert.equal(topFor(1) - topFor(0.5), keycap.height / 2);
 });
 
 test('the base from the analysis is reused when only heights change', () => {
-    const { analysis, settings } = analyse('trace');
+    const { analysis, settings } = analyse('trace', logoArtwork(300));
     const taller = { ...settings, colors: settings.colors.map((c) => ({ ...c, height_mm: c.height_mm + 0.5 })) };
     const a = buildParts(analysis, settings, KEYCAP_BODY, { layout: 'print' });
     const b = buildParts(analysis, taller, KEYCAP_BODY, { layout: 'print' });
@@ -194,13 +282,24 @@ test('the base from the analysis is reused when only heights change', () => {
     assert.deepEqual(b.at(-1).positions, a.at(-1).positions);
     assert.deepEqual(b.at(-1).indices, a.at(-1).indices);
     assert.notDeepEqual(bounds(b[0]), bounds(a[0]));
-    // The analysis keeps the unplaced base; layouts never change it.
+    // The analysis keeps the unplaced, upright base; layouts never change it.
     const [, , z0, , , z1] = bounds(analysis.cap.baseBody);
-    assert.ok(Math.abs(z0) < EPS && Math.abs(z1 - HB) < EPS);
+    assert.ok(Math.abs(z0) < EPS && Math.abs(z1 - TOP) < EPS);
 });
 
-test('a trace shape too small for the cutout is a blocker and buildParts refuses it', () => {
-    // A 3 mm radius dot fitted into 30 mm: the outline is a ~5 mm disc that holds the stem but not the switch.
+test('an owner-like logo (opaque white background, ring around a monitor) is not blocked in Trace at scale 1', () => {
+    for (const hollow of [false, true]) {
+        const { analysis, settings } = analyse('trace', ownerLikeLogo(500), { hollow_cap: hollow });
+        assert.deepEqual(analysis.blockers, [], `hollow ${hollow}`);
+        const parts = buildParts(analysis, settings, KEYCAP_BODY);
+        assert.ok(parts.some((p) => p.kind === 'colour'));
+        checkBase(parts.at(-1), analysis.cap, { dz: -(REST + FLOOR) });
+        assert.ok(isClosedManifold(parts.at(-2)));
+    }
+});
+
+test('a 6 mm blob in Trace is too small for the switch base; buildParts refuses it', () => {
+    // A 3 mm radius dot fitted into 30 mm: the outline is a ~10 mm disc that holds the stem but not the switch.
     const dot = makeImage(300, 300, (x, y) => (Math.hypot(x + 0.5 - 150, y + 0.5 - 150) < 30 ? [29, 78, 216] : null));
     const { analysis, settings } = analyse('trace', dot);
 
@@ -209,8 +308,8 @@ test('a trace shape too small for the cutout is a blocker and buildParts refuses
     assert.throws(() => buildParts(analysis, settings, KEYCAP_BODY, { layout: 'print' }), { message: FIT_BLOCKER });
 });
 
-test('a square keycap too small for the cutout gets the same blocker', () => {
-    const body = { ...KEYCAP_BODY, keycap: { size: 18 } };
+test('a square keycap too small for the switch gets the same blocker', () => {
+    const body = { ...KEYCAP_BODY, keycap: { size: 16 } };
     const settings = { ...SETTINGS, base_shape: 'square' };
     const analysis = analyzeArtwork(solidBlue(), settings, body, 'preview');
 
@@ -218,15 +317,18 @@ test('a square keycap too small for the cutout gets the same blocker', () => {
     assert.throws(() => buildParts(analysis, settings, body), { message: FIT_BLOCKER });
 });
 
-test('baseFits checks the expanded cutout against the inset and its islands', () => {
-    const inset = (size) => [{ outer: squareOutline({ size, corner_radius: 0 }), holes: [] }];
+test('baseFits: the cutout plus 1.6 mm inside the cap outline, the cavity inside the base outline', () => {
+    const square = (size) => whole(squareOutline({ size, corner_radius: 0 }));
     const stem = { x: 0, y: 0 };
     const need = CUT + 1.6;
+    const roomy = square(40);
 
-    assert.ok(baseFits({ inset: inset(need + 0.2), stem, keycap }));
-    assert.ok(!baseFits({ inset: inset(need - 0.2), stem, keycap }), 'too tight');
-    assert.ok(!baseFits({ inset: inset(40), stem: { x: 13, y: 0 }, keycap }), 'off to one side');
-    assert.ok(!baseFits({ inset: [], stem, keycap }), 'nothing left');
+    assert.ok(baseFits({ cap: square(need + 0.2), base: roomy, stem, keycap }));
+    assert.ok(!baseFits({ cap: square(need - 0.2), base: roomy, stem, keycap }), 'cap too tight');
+    assert.ok(baseFits({ cap: square(need + 0.2), base: square(CAVITY + 0.2), stem, keycap }));
+    assert.ok(!baseFits({ cap: square(need + 0.2), base: square(CAVITY - 0.2), stem, keycap }), 'cavity does not fit the base');
+    assert.ok(!baseFits({ cap: square(40), base: roomy, stem: { x: 13, y: 0 }, keycap }), 'off to one side');
+    assert.ok(!baseFits({ cap: [], base: roomy, stem, keycap }), 'no cap outline');
 
     const island = (cx, cy) => [
         [cx - 0.5, cy - 0.5],
@@ -235,59 +337,36 @@ test('baseFits checks the expanded cutout against the inset and its islands', ()
         [cx + 0.5, cy - 0.5],
     ];
     const withIsland = (cx, cy) => [{ outer: squareOutline({ size: 40, corner_radius: 2 }), holes: [island(cx, cy)] }];
-    assert.ok(baseFits({ inset: withIsland(15, 15), stem, keycap }), 'a far island is fine');
-    assert.ok(!baseFits({ inset: withIsland(0, 3), stem, keycap }), 'an island inside the square');
-    assert.ok(!baseFits({ inset: withIsland(CUT / 2 + 0.8, 3), stem, keycap }), 'an island touching the square edge');
+    assert.ok(baseFits({ cap: withIsland(15, 15), base: roomy, stem, keycap }), 'a far hole is fine');
+    assert.ok(!baseFits({ cap: withIsland(0, 3), base: roomy, stem, keycap }), 'a hole inside the square');
+    assert.ok(!baseFits({ cap: withIsland(need / 2, 3), base: roomy, stem, keycap }), 'a hole touching the square edge');
 
     // A notch reaching into the square between the sampled corners and midpoints.
-    const notched = [
-        {
-            outer: [
-                [-20, -20],
-                [20, -20],
-                [20, 20],
-                [4, 20],
-                [3.5, 4],
-                [3, 20],
-                [-20, 20],
-            ],
-            holes: [],
-        },
-    ];
-    assert.ok(!baseFits({ inset: notched, stem, keycap }), 'an inset edge crossing the square');
+    const notched = whole([
+        [-20, -20],
+        [20, -20],
+        [20, 20],
+        [4, 20],
+        [3.5, 4],
+        [3, 20],
+        [-20, 20],
+    ]);
+    assert.ok(!baseFits({ cap: notched, base: roomy, stem, keycap }), 'a cap edge crossing the square');
+    assert.ok(!baseFits({ cap: roomy, base: notched, stem, keycap }), 'a base edge crossing the cavity');
 });
 
-test('a base that fails verification is never returned; the analysis gets the build blocker', () => {
-    const outline = squareOutline(keycap);
+test('a base that cannot be built is never returned; the analysis gets the build blocker', () => {
+    const outline = squareOutline({ size: 34.6, corner_radius: 6.3 });
+    const pocket = squareOutline({ size: 30.6, corner_radius: 4.3 });
     const stem = { x: 0, y: 0 };
-    const good = [{ outer: squareOutline({ size: 26, corner_radius: 2 }), holes: [] }];
-    assert.ok(isClosedManifold(buildBase({ outline, inset: good, stem, keycap })));
+    const base = buildBase({ pocket, outline, stem, keycap, insertion: 0.5 });
+    assert.ok(isClosedManifold(base));
 
-    // An island touching the inset's outer ring at one vertex: the vertical edge there has four wall triangles.
-    const touching = [
-        {
-            outer: [
-                [-12, -12],
-                [12, -12],
-                [12, 0],
-                [12, 12],
-                [-12, 12],
-            ],
-            holes: [
-                [
-                    [12, 0],
-                    [9, -1.5],
-                    [9, 1.5],
-                ],
-            ],
-        },
-    ];
-    assert.equal(buildBase({ outline, inset: touching, stem, keycap }), null);
-    assert.equal(buildBase({ outline, inset: good, stem: { x: 13.5, y: 0 }, keycap }), null, 'the cutout is not in the inset');
-    const flat = { ...keycap, base: { ...keycap.base, plate: keycap.base.height } };
-    assert.equal(buildBase({ outline, inset: good, stem, keycap: flat }), null, 'no room under the plate');
+    assert.equal(buildBase({ pocket, outline, stem: { x: 10, y: 0 }, keycap, insertion: 0.5 }), null, 'the squares leave the outlines');
+    const wide = { ...keycap, base: { ...keycap.base, cutout: 17 } };
+    assert.equal(buildBase({ pocket, outline, stem, keycap: wide, insertion: 0.5 }), null, 'the cutout is wider than the cavity');
 
-    const body = { ...KEYCAP_BODY, keycap: { base: { plate: 12 } } };
+    const body = { ...KEYCAP_BODY, keycap: { base: { cutout: 17 } } };
     const settings = { ...SETTINGS, base_shape: 'square' };
     const analysis = analyzeArtwork(solidBlue(), settings, body, 'preview');
     assert.deepEqual(analysis.blockers, [FAILED_BLOCKER]);
@@ -313,8 +392,8 @@ function writeJob(image, settings, body) {
     return dir;
 }
 
-test('build.mjs writes Cap and Base, the base laid out for printing', () => {
-    const dir = writeJob(logoArtwork(300), { ...SETTINGS, base_shape: 'trace' }, KEYCAP_BODY);
+test('build.mjs writes Cap and Base, the base upright beside the cap', () => {
+    const dir = writeJob(ownerLikeLogo(500), { ...SETTINGS, base_shape: 'trace', hollow_cap: true }, KEYCAP_BODY);
     const run = spawnSync(process.execPath, [BUILD, dir], { encoding: 'utf8' });
 
     assert.equal(run.status, 0, run.stderr);
@@ -330,16 +409,14 @@ test('build.mjs writes Cap and Base, the base laid out for printing', () => {
     assert.ok(baseFile, files.join(', '));
     assert.match(baseFile, /\/\d\d-base\.stl$/);
     assert.match(capFile, /\/\d\d-cap\.stl$/);
-    assert.ok(
-        files.filter((f) => f !== baseFile && f !== capFile).every((f) => /\/\d\d-colour-[0-9a-f]{6}\.stl$/.test(f)),
-        files.join(', '),
-    );
+    const readme = strFromU8(zip[Object.keys(zip).find((f) => /README/i.test(f))]);
+    assert.match(readme, /upright with its open top up/);
 
     const base = parseStl(zip[baseFile]);
     const cap = parseStl(zip[capFile]);
     assert.ok(isClosedManifold(base));
     const [bx0, , bz0, , , bz1] = bounds(base);
-    assert.ok(Math.abs(bz0) < EPS && Math.abs(bz1 - HB) < EPS, 'flat on the bed');
+    assert.ok(Math.abs(bz0) < EPS && Math.abs(bz1 - TOP) < EPS, `upright, z ${bz0}..${bz1}`);
     assert.ok(bx0 >= bounds(cap)[3] + SPACING - EPS, 'beside the cap');
 
     const result = JSON.parse(readFileSync(join(dir, 'result.json'), 'utf8'));

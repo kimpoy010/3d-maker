@@ -20,7 +20,7 @@ try {
     const image = { data: png.data, width: png.width, height: png.height };
 
     const analysis = analyzeArtwork(image, job.settings, job.body, 'final');
-    // Print layout: the switch base is flipped plate down and placed beside the cap.
+    // Print layout: the switch base stands upright, open top up, beside the cap.
     const parts = buildParts(analysis, job.settings, job.body, { layout: 'print' });
     // A generated keycap's cap and base are always there; it is the artwork that has to print.
     if (!parts.some((part) => part.kind !== 'body' && part.kind !== 'base')) throw new Error('The artwork has no printable colour on this body.');

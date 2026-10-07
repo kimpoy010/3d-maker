@@ -74,6 +74,59 @@ export function logoArtwork(size = 500) {
     });
 }
 
+/**
+ * A look-alike of a real customer logo, `size` px square on an OPAQUE white background (so background removal has to
+ * run): a blue rounded-rectangle monitor with a stand, white mountains and a blue bar inside it, a thick teal ring (a
+ * tilted ellipse) around it and a teal dot touching the ring at the upper right. Edges are 4 x 4 supersampled.
+ */
+export function ownerLikeLogo(size = 500) {
+    const s = size / 500;
+    const tilt = (-28 * Math.PI) / 180;
+    const [cos, sin] = [Math.cos(tilt), Math.sin(tilt)];
+    const [ex, ey, ea, eb, half] = [250, 255, 235, 150, 13];
+    // A point on the ring's centre line, then pushed outward: the dot overlaps the ring by a few pixels.
+    const [pu, pv] = [ea * Math.cos(-0.6), eb * Math.sin(-0.6)];
+    const px = ex + pu * cos - pv * sin;
+    const py = ey + pu * sin + pv * cos;
+    const out = Math.hypot(px - ex, py - ey);
+    const dot = [px + ((px - ex) / out) * 50, py + ((py - ey) / out) * 50, 45];
+
+    const white = [255, 255, 255];
+    const paper = [235, 232, 228];
+    const blue = [16, 16, 240];
+    const teal = [52, 150, 200];
+    const inEllipse = (x, y, a, b) => {
+        const u = (x - ex) * cos + (y - ey) * sin;
+        const v = -(x - ex) * sin + (y - ey) * cos;
+        return (u / a) ** 2 + (v / b) ** 2 <= 1;
+    };
+    const colourAt = (x, y) => {
+        if (Math.hypot(x - dot[0], y - dot[1]) <= dot[2]) return teal;
+        if (inEllipse(x, y, ea + half, eb + half) && !inEllipse(x, y, ea - half, eb - half)) return teal;
+        if (roundedRectDistance(x, y, 245, 240, 175, 120, 14) <= 0) {
+            const inner = roundedRectDistance(x, y, 245, 245, 158, 100, 6) <= 0;
+            const ridge = Math.min(175 + 0.9 * Math.abs(x - 300), 215 + 0.9 * Math.abs(x - 190)); // two mountain peaks
+            if (inner && roundedRectDistance(x, y, 245, 300, 80, 20, 3) <= 0) return blue;
+            if (inner && y > ridge) return paper;
+            return blue;
+        }
+        if (roundedRectDistance(x, y, 245, 385, 28, 30, 0) <= 0 || roundedRectDistance(x, y, 245, 425, 90, 12, 8) <= 0) return blue;
+        return white;
+    };
+
+    return makeImage(size, size, (px0, py0) => {
+        const sum = [0, 0, 0];
+        for (let j = 0; j < 4; j++) {
+            for (let i = 0; i < 4; i++) {
+                const rgb = colourAt((px0 + (i + 0.5) / 4) / s, (py0 + (j + 0.5) / 4) / s);
+                for (let c = 0; c < 3; c++) sum[c] += rgb[c];
+            }
+        }
+
+        return sum.map((v) => Math.round(v / 16));
+    });
+}
+
 /** A label grid from rows of text, e.g. ['.##', '#..'] where '.' is background (255) and digits are labels. */
 export function gridFromRows(rows) {
     const height = rows.length;

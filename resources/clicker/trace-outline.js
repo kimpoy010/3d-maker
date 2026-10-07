@@ -66,10 +66,12 @@ function hullMask(mask, width, height) {
  * @param {{image: {data, width, height}, frame: {left, top, mmPerPx}, keycap: object}} input the scaled RGBA image,
  *   where its top-left corner sits in mm and its mm per pixel, and the keycap config
  * @returns {{outline: number[][], stem: {x: number, y: number}, stemRadius: number, notes: string[],
- *   inset: (distance: number) => {outer, holes}[], cavity: (wall: number, bossRadius: number) => {outer, holes}[]}}
+ *   inset: (distance: number) => {outer, holes}[], cavity: (wall: number, bossRadius: number) => {outer, holes}[],
+ *   grow: (distance: number) => number[][]}}
  *   outline in mm (counter-clockwise), the stem at the point farthest from it, and that distance in mm; `inset`
  *   erodes the grown silhouette by `distance` mm, `cavity` also removes the boss disc around the stem (both in mm,
- *   outer rings CCW, holes CW)
+ *   outer rings CCW, holes CW); `grow` dilates it by `distance` mm and returns the outer ring (mm, CCW; holes the
+ *   dilation closes off are ignored). The grid pads the artwork by rim + 8 mm, so growth up to 8 mm is never clipped.
  */
 export function traceOutline({ image, frame, keycap }) {
     const { data, width, height } = image;
@@ -147,7 +149,14 @@ export function traceOutline({ image, frame, keycap }) {
         return maskPolygons(mask, w, h, grid);
     };
 
-    return { outline, stem, stemRadius, notes, inset, cavity };
+    // 6. Growth for the switch base's pocket and outline: the same grown mask dilated by `distance`, its outer ring.
+    const grow = (distance) => {
+        const pieces = maskPolygons(dilate(grown, w, h, distance / cell), w, h, grid);
+
+        return pieces.reduce((best, piece) => (Math.abs(signedArea(piece.outer)) > Math.abs(signedArea(best.outer)) ? piece : best)).outer;
+    };
+
+    return { outline, stem, stemRadius, notes, inset, cavity, grow };
 }
 
 /**

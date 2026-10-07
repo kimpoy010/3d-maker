@@ -16,11 +16,19 @@ export const KEYCAP_DEFAULTS = {
     socket_depth: 4.5,
     stem: { span: 4.2, arm: 1.35, wall: 1.2 },
     hollow: { wall: 1.6, plate: 2.0, boss_radius: 3.6 },
-    base: { height: 12, plate: 1.5, wall: 2.0, cutout: 14.1, gap: 4.0, spacing: 10, hex: '#6B7280' },
+    // The open-top switch base the cap slides into (mm): see buildBase.
+    base: { clearance: 0.3, wall: 2.0, plate: 1.5, under: 6.0, cavity: 16.2, cutout: 14.1, rest_gap: 8.0, spacing: 10, hex: '#6B7280' },
 };
 
-/** Clearance kept around the switch cutout inside the base cavity, mm. */
+/** Cap material kept around the switch cutout, mm: the cutout plus this on every side must fit in the cap outline. */
 const CUTOUT_MARGIN = 0.8;
+
+/** The fraction of the cap's height inside the base at rest: `settings.cap_insertion` clamped to 0.5..1, default 0.5. */
+export function capInsertion(settings) {
+    const value = Number(settings?.cap_insertion ?? 0.5);
+
+    return Number.isFinite(value) ? Math.min(1, Math.max(0.5, value)) : 0.5;
+}
 
 /** Smallest cavity piece kept, mm². */
 const MIN_CAVITY_MM2 = 4;
@@ -172,6 +180,17 @@ export function insetOutline(outline, shape, keycap, distance) {
     throw new Error(`No analytic inset for the ${shape} shape.`);
 }
 
+/**
+ * The outline grown by `distance` for the analytic shapes: a rounded square of `size + 2 distance` with corner radius
+ * `corner_radius + distance`, or a circle of radius `size / 2 + distance`; counter-clockwise.
+ */
+export function growOutline(outline, shape, keycap, distance) {
+    const size = keycap.size + 2 * distance;
+    if (shape === 'circle') return circleOutline({ size });
+    if (shape === 'square') return squareOutline({ size, corner_radius: Math.max(keycap.corner_radius ?? 0, 0) + distance });
+    throw new Error(`No analytic growth for the ${shape} shape.`);
+}
+
 /** Distance from a point to a closed ring's edges. */
 function distanceToRing([px, py], ring) {
     let best = Infinity;
@@ -317,47 +336,71 @@ function segmentTouchesBox([ax, ay], [bx, by], x0, y0, x1, y1) {
 }
 
 /**
- * True when the switch cutout, expanded by 0.8 mm on every side, lies inside the base's inset region: its corners and
- * edge midpoints are inside the polygons and no inset ring (outer edge, hole or island) reaches into or touches it.
+ * True when the axis-aligned square of half size `half` centred on the stem lies inside the polygons: its corners and
+ * edge midpoints are inside, and no ring (outer edge, hole or island) reaches into or touches it.
  */
-export function baseFits({ inset, stem, keycap }) {
-    const half = keycap.base.cutout / 2 + CUTOUT_MARGIN;
+function squareInside(polygons, stem, half) {
     const [x0, y0, x1, y1] = [stem.x - half, stem.y - half, stem.x + half, stem.y + half];
     const samples = [...squareRing(stem.x, stem.y, half), [stem.x, y0], [x1, stem.y], [stem.x, y1], [x0, stem.y]];
-    if (!samples.every((point) => pointInPolygons(point, inset))) return false;
+    if (!samples.every((point) => pointInPolygons(point, polygons))) return false;
 
-    return inset.every(({ outer, holes }) =>
+    return polygons.every(({ outer, holes }) =>
         [outer, ...holes].every((ring) => ring.every((point, i) => !segmentTouchesBox(point, ring[(i + 1) % ring.length], x0, y0, x1, y1))),
     );
 }
 
 /**
- * Switch base as ONE closed shell on the cap's outline (z 0..height): outline walls and a top face with the square
- * switch cutout centred on the stem; the cutout's walls from `height - plate` up to the top; the plate's underside
- * facing down at `height - plate`; below it a cavity bounded by the `inset` polygons (holes are solid islands reaching
- * down to z 0), open at the bottom.
- * @returns the part, or null when the config leaves no plate or cavity, the cutout is not inside one inset piece, or
- *   the welded shell is not a closed manifold with positive volume
+ * The switch fits the shape: the plate cutout plus 0.8 mm on every side lies inside the `cap` outline polygons, and
+ * the cavity square under the plate lies inside the `base` outline polygons (both centred on the stem).
  */
-export function buildBase({ outline, inset, stem, keycap }) {
-    const { height, plate, cutout, hex } = keycap.base;
-    if (!(plate > 0 && plate < height && cutout > 0) || inset.length === 0) return null;
+export function baseFits({ cap, base, stem, keycap }) {
+    const { cutout, cavity } = keycap.base;
 
-    const roof = height - plate;
+    return squareInside(cap, stem, cutout / 2 + CUTOUT_MARGIN) && squareInside(base, stem, cavity / 2);
+}
+
+/** Height of the base's rim above its bottom: the solid zone, the plate, the rest gap and the inserted part of the cap. */
+export function baseTop(keycap, insertion) {
+    const { under, plate, rest_gap: restGap } = keycap.base;
+
+    return under + plate + restGap + insertion * keycap.height;
+}
+
+/**
+ * The open-top switch base the cap slides into, as ONE closed shell, upright with z 0 at its bottom. Zones from the
+ * bottom: z 0..under is the `outline` with the square switch cavity open at the bottom; under..under + plate is the
+ * plate with the square cutout through it; above it the `pocket` is open up to the rim at `baseTop` and the ring
+ * between the pocket and the outline is solid. Faces: outer walls, the rim, the pocket walls, the plate top, the
+ * cutout walls, the plate underside around the cutout, the cavity walls and the bottom around the cavity.
+ * @param {{pocket: number[][], outline: number[][], stem: {x, y}, keycap: object, insertion: number}} input the pocket
+ *   and base outlines (rings in mm), the stem the squares are centred on, the keycap config and the cap insertion
+ * @returns the part, or null when the config is unusable, the squares do not lie inside their outlines, or the welded
+ *   shell is not a closed manifold with positive volume
+ */
+export function buildBase({ pocket, outline, stem, keycap, insertion }) {
+    const { under, plate, cavity, cutout, rest_gap: restGap, hex } = keycap.base;
+    if (!(under > 0 && plate > 0 && restGap >= 0 && cutout > 0 && cavity > cutout)) return null;
+
     const ring = ensureCcw(outline);
-    const square = squareRing(stem.x, stem.y, cutout / 2);
-    const cavity = inset.map(({ outer, holes }) => ({ outer: ensureCcw(outer), holes: holes.map((hole) => reversed(ensureCcw(hole))) }));
-    const owner = cavity.find((piece) => pointInPolygons([stem.x, stem.y], [piece]));
-    if (!owner) return null;
-    const plateUnderside = cavity.map((piece) => (piece === owner ? { outer: piece.outer, holes: [...piece.holes, reversed(square)] } : piece));
+    const pocketRing = ensureCcw(pocket);
+    if (!squareInside([{ outer: pocketRing, holes: [] }], stem, cutout / 2) || !squareInside([{ outer: ring, holes: [] }], stem, cavity / 2))
+        return null;
+    if (!pocketRing.every((point) => pointInPolygons(point, [{ outer: ring, holes: [] }]))) return null;
+
+    const floor = under + plate;
+    const top = baseTop(keycap, insertion);
+    const hole = squareRing(stem.x, stem.y, cutout / 2);
+    const room = squareRing(stem.x, stem.y, cavity / 2);
 
     const meshes = [
-        wallStrip(ring, 0, height, 'out'),
-        planarFace([{ outer: ring, holes: [reversed(square)] }], height, true),
-        wallStrip(square, roof, height, 'in'),
-        planarFace(plateUnderside, roof, false),
-        planarFace(cavityBottom(ring, cavity), 0, false),
-        ...cavityWalls(cavity, roof),
+        wallStrip(ring, 0, top, 'out'),
+        planarFace([{ outer: ring, holes: [reversed(pocketRing)] }], top, true),
+        wallStrip(pocketRing, floor, top, 'in'),
+        planarFace([{ outer: pocketRing, holes: [reversed(hole)] }], floor, true),
+        wallStrip(hole, under, floor, 'in'),
+        planarFace([{ outer: room, holes: [reversed(hole)] }], under, false),
+        wallStrip(room, 0, under, 'in'),
+        planarFace([{ outer: ring, holes: [reversed(room)] }], 0, false),
     ];
 
     const mesh = verifiedMesh(weld(meshes));

@@ -4,9 +4,10 @@ import {
     buildBase,
     buildHollowCapBody,
     buildKeycapBody,
+    capInsertion,
     circleOutline,
+    growOutline,
     hollowCavity,
-    insetOutline,
     keycapConfig,
     squareOutline,
     stemClearance,
@@ -114,9 +115,10 @@ export function paletteFromArtwork(image, count, settings, body) {
  *   {generator: 'mx_keycap', keycap, max_layer_height, min_feature}; then settings.base_shape picks the outline
  * @param {'preview'|'final'} quality
  * @returns analysis; for generated bodies `cap` = {outline, stem}, plus `cavity` (hollow cap polygons, possibly
- *   empty) and `hollowBody` (the verified hollow cap part, or null) when settings.hollow_cap is true, `baseInset`
- *   (the outline inset by the base wall) and `baseBody` (the verified switch base in its own frame, or null; only set
- *   when nothing blocks); `blockers` lists reasons the cap or base cannot be built
+ *   empty) and `hollowBody` (the verified hollow cap part, or null) when settings.hollow_cap is true,
+ *   `pocketOutline` and `baseOutline` (the outline grown by the base clearance, and by clearance + wall) and
+ *   `baseBody` (the verified open-top switch base, upright in its own frame, or null; only set when nothing blocks;
+ *   it depends on settings.cap_insertion); `blockers` lists reasons the cap or base cannot be built
  */
 export function analyzeArtwork(source, settings, body, quality = 'preview') {
     const image = prepareArtwork(source, settings, body);
@@ -208,10 +210,19 @@ export function analyzeArtwork(source, settings, body, quality = 'preview') {
         keycapShape = { outline: shape === 'circle' ? circleOutline(keycap) : squareOutline(keycap), stem: { x: 0, y: 0 } };
     }
     if (generated) {
-        // The switch base: checked only once the stem fits, so the user sees one problem at a time.
-        const wall = keycap.base.wall;
-        keycapShape.baseInset = shape === 'trace' ? traced.inset(wall) : insetOutline(keycapShape.outline, shape, keycap, wall);
-        if (blockers.length === 0 && !baseFits({ inset: keycapShape.baseInset, stem: keycapShape.stem, keycap })) blockers.push(BASE_BLOCKER);
+        // The switch base's pocket and outline grow from the cap outline. The fit is checked only once the stem fits,
+        // so the user sees one problem at a time.
+        const { clearance, wall } = keycap.base;
+        const grow = (distance) => (shape === 'trace' ? traced.grow(distance) : growOutline(keycapShape.outline, shape, keycap, distance));
+        keycapShape.pocketOutline = grow(clearance);
+        keycapShape.baseOutline = grow(clearance + wall);
+        const fits = baseFits({
+            cap: [{ outer: keycapShape.outline, holes: [] }],
+            base: [{ outer: keycapShape.baseOutline, holes: [] }],
+            stem: keycapShape.stem,
+            keycap,
+        });
+        if (blockers.length === 0 && !fits) blockers.push(BASE_BLOCKER);
     }
     if (generated && settings.hollow_cap === true) {
         keycapShape.cavity = hollowCavity({ shape, ...keycapShape, keycap, trace: traced });
@@ -219,48 +230,41 @@ export function analyzeArtwork(source, settings, body, quality = 'preview') {
             if (blockers.length === 0) notes.push(HOLLOW_NOTE);
         } else if (blockers.length === 0) prepareHollowCap(keycapShape, keycap, notes);
     }
-    if (generated && blockers.length === 0) prepareBase(keycapShape, keycap, blockers);
+    if (generated && blockers.length === 0) prepareBase(keycapShape, keycap, capInsertion(settings), blockers);
 
     return { palette, polygons, outlineIndex, notes, mmPerPx, frame, cap: keycapShape, blockers };
 }
 
 /**
- * Build the switch base for `cap` = {outline, stem, baseInset} once, in its own frame (z 0..height), and keep it as
- * `cap.baseBody` when it is a verified closed manifold; otherwise set `cap.baseBody = null` and add the blocker
- * (an unverified base is never exported).
+ * Build the switch base for `cap` = {pocketOutline, baseOutline, stem} once, upright in its own frame (z 0 at its
+ * bottom, the rim at `baseTop(keycap, insertion)`), and keep it as `cap.baseBody` when it is a verified closed
+ * manifold; otherwise set `cap.baseBody = null` and add the blocker (an unverified base is never exported). The base
+ * depends on the cap insertion, so changing `settings.cap_insertion` needs a fresh analysis.
  */
-export function prepareBase(cap, keycap, blockers) {
-    cap.baseBody = buildBase({ outline: cap.outline, inset: cap.baseInset, stem: cap.stem, keycap });
+export function prepareBase(cap, keycap, insertion, blockers) {
+    cap.baseBody = buildBase({ pocket: cap.pocketOutline, outline: cap.baseOutline, stem: cap.stem, keycap, insertion });
     if (!cap.baseBody) blockers.push(BASE_FAILED_BLOCKER);
 
     return cap;
 }
 
 /**
- * The base placed for a layout. `assembled`: moved down to z [-(gap + height), -gap] under the cap. `print`: turned
- * 180 degrees about the x axis, (x, y, z) -> (x, -y, height - z), so the plate lies on the bed, and moved in +x by
- * the outline's width plus `spacing` so it clears the cap. The rotation keeps the triangle winding.
+ * The base placed for a layout, always upright (only translated). `assembled`: moved down so its plate top is at
+ * z -rest_gap, i.e. `rest_gap` under the cap's bottom face, and the rim at cap_insertion x the cap height.
+ * `print`: z 0 on the bed, moved in +x by the base outline's width plus `spacing` so it clears the cap.
  */
-function placeBase(base, outline, config, layout) {
-    const { height, gap, spacing } = config;
-    const positions = new Float32Array(base.positions.length);
+function placeBase(base, baseOutline, config, layout) {
+    const { under, plate, rest_gap: restGap, spacing } = config;
+    let [dx, dz] = [0, -(restGap + under + plate)];
     if (layout === 'print') {
-        let x0 = Infinity;
-        let x1 = -Infinity;
-        for (const [x] of outline) [x0, x1] = [Math.min(x0, x), Math.max(x1, x)];
-        const shift = x1 - x0 + spacing;
-        for (let i = 0; i < positions.length; i += 3) {
-            positions[i] = base.positions[i] + shift;
-            positions[i + 1] = -base.positions[i + 1];
-            positions[i + 2] = height - base.positions[i + 2];
-        }
-    } else {
-        const drop = gap + height;
-        for (let i = 0; i < positions.length; i += 3) {
-            positions[i] = base.positions[i];
-            positions[i + 1] = base.positions[i + 1];
-            positions[i + 2] = base.positions[i + 2] - drop;
-        }
+        const xs = baseOutline.map(([x]) => x);
+        [dx, dz] = [Math.max(...xs) - Math.min(...xs) + spacing, 0];
+    }
+    const positions = new Float32Array(base.positions.length);
+    for (let i = 0; i < positions.length; i += 3) {
+        positions[i] = base.positions[i] + dx;
+        positions[i + 1] = base.positions[i + 1];
+        positions[i + 2] = base.positions[i + 2] + dz;
     }
 
     return { ...base, positions, indices: Uint32Array.from(base.indices) };
@@ -315,13 +319,13 @@ export function buildParts(analysis, settings, body, { layout = 'assembled' } = 
     }
 
     if (generated) {
-        const { outline: capOutline, stem, hollowBody, baseBody } = analysis.cap;
+        const { outline: capOutline, stem, hollowBody, baseBody, baseOutline } = analysis.cap;
         // The hollow cap is built and verified during analysis (it does not depend on the colour heights); turning
         // hollow_cap off needs no re-analysis, turning it on does.
         parts.push(settings.hollow_cap === true && hollowBody ? { ...hollowBody } : buildKeycapBody({ outline: capOutline, stem, keycap }));
         // So is the base; only its placement depends on the layout.
         if (!baseBody) throw new Error(BASE_FAILED_BLOCKER);
-        parts.push(placeBase(baseBody, capOutline, keycap.base, LAYOUTS.includes(layout) ? layout : 'assembled'));
+        parts.push(placeBase(baseBody, baseOutline, keycap.base, LAYOUTS.includes(layout) ? layout : 'assembled'));
     }
 
     return parts;
