@@ -16,8 +16,9 @@ The first base was a closed block under the cap. The owner wants the real arrang
 clearance 0.3     gap between the cap and the pocket wall, each side
 wall      2.0     base wall thickness around the pocket
 plate     1.5     floor plate the switch snaps into
-under     6.0     solid zone below the plate, with the switch cavity
-cavity    16.2    square cavity under the plate for the switch body (open at the bottom)
+floor     1.5     solid floor: the base is CLOSED at the bottom (owner request, 2026-10-08)
+under     7.0     total height below the plate: floor + the enclosed switch pocket (5.5)
+cavity    16.2    square pocket under the plate for the switch body (enclosed: floor below, plate above, reached only through the cutout; switch pins must be trimmed or the switch pinless)
 cutout    14.1    square hole through the plate (MX plate cutout plus 0.1)
 rest_gap  8.0     distance from the plate top to the cap's bottom face at rest
 spacing   10      gap between the parts in the print layout
@@ -34,11 +35,12 @@ Outlines (all centred on the cap's frame, CCW, in mm):
 Square: rounded square, corner radius + the growth; Circle: radius + the growth; Trace: dilate the same coarse mask the cap outline was traced from by the growth distance, trace, simplify (0.03 mm), outer CCW.
 
 Heights (z measured upward from the base's own bottom, which is z 0):
-- zone A, z 0 to `under`: base outline with a square cavity `cavity` x `cavity` centred on the stem, open at the bottom;
+- floor, z 0 to `floor`: the whole base outline, solid (closed bottom);
+- zone A, z `floor` to `under`: base outline with an enclosed square pocket `cavity` x `cavity` centred on the stem;
 - plate, z `under` to `under + plate`: base outline with the `cutout` x `cutout` hole through it;
 - pocket, z `under + plate` to the rim at `top = under + plate + rest_gap + cap_insertion * keycap.height`: pocket outline is empty (open top), the ring between the pocket and base outlines is solid.
 
-One closed manifold shell built from planar faces and wall strips, welded, and passed through `verifiedMesh`: outer walls 0..top (base outline); rim face at `top` (base outline minus pocket outline, facing up); pocket walls from the plate top to `top` facing into the pocket; plate top face at `under + plate` (pocket outline minus cutout, facing up); cutout walls through the plate; plate underside at `under` (cavity minus cutout... the face between the cavity outline and the cutout facing down); cavity walls 0..under facing into the cavity; bottom face at 0 (base outline minus cavity, facing down). The base prints upright, open top up, with no supports (the only overhang is a 1.05 mm ledge around the cutout).
+One closed manifold shell built from planar faces and wall strips, welded, and passed through `verifiedMesh`: outer walls 0..top (base outline); rim face at `top` (base outline minus pocket outline, facing up); pocket walls from the plate top to `top` facing into the pocket; plate top face at `under + plate` (pocket outline minus cutout, facing up); cutout walls through the plate; plate underside at `under` (cavity minus cutout... the face between the cavity outline and the cutout facing down); pocket walls `floor`..`under` facing into the switch pocket; pocket floor face at `floor` (the cavity square, facing up); bottom face at 0 (the whole base outline, facing down, no hole). The base prints upright, open top up, with no supports (the only overhang is a 1.05 mm ledge around the cutout; the enclosed switch pocket has the plate as its ceiling).
 
 **Fit rule** (blocker `This shape is too small to hold the switch base. Make the artwork larger or choose Square or Circle.`): the square `cutout + 2*0.8` centred on the stem lies inside the **cap outline** (corners, edge midpoints and no outline hole or island inside it); and the cavity square `cavity` centred on the stem lies inside the **base outline**. The old inset-based rule is removed. Verification failure of the shell is still a blocker (`The switch base could not be built for this shape. ...`).
 

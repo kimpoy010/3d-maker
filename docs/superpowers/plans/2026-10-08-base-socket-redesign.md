@@ -63,7 +63,27 @@
 
 ---
 
-### Task 3: Docs and full verification
+### Task 3: Closed bottom
+
+**Files:**
+- Modify: `resources/clicker/keycap.js`, `resources/clicker/geometry.js` (only if needed), `app/Models/ClickerBody.php` (sample config), `tests/Feature/ClickerBodySeederTest.php`, `README.md`
+- Test: `resources/clicker/tests/base.test.js` (and any test that asserted the open bottom or `under` 6.0)
+
+**Interfaces:**
+- Consumes: Task 1 (`buildBase`, `baseFits`, `placeBase`, layouts).
+- Produces: `KEYCAP_DEFAULTS.base` gains `floor: 1.5` and `under` becomes `7.0` (the enclosed switch pocket is `under - floor` = 5.5 mm tall); `buildBase` per the amended spec "Base geometry": floor z 0..floor solid over the whole base outline; the square pocket (`cavity` x `cavity`, centred on the stem) enclosed from `floor` to `under`, ceiling = the plate underside (with the cutout hole); the bottom face at z 0 is the whole base outline with no hole; a pocket floor face at `floor` (the cavity square, facing up); all other faces as before; still ONE closed manifold shell through `verifiedMesh`; `buildBase` returns null (blocker) when `floor <= 0` or `under <= floor`; old rows without `floor` use the default; rows that still say `under: 6.0` keep working (pocket 4.5 tall).
+
+- [ ] **Step 1: Write failing tests**: the bottom is closed (a vertical ray through any point inside the base outline, including through the stem centre and through the cavity square, enters material at z 0 facing up... i.e. the first intersection from below is at z = 0; the ray through the cutout column now hits material only in [0, floor] and nothing above: pocket empty, plate hole empty); volume = `base outline area x top - pocket area x (top - under - plate) - cavity² x (under - floor) - cutout² x plate` within 1 percent for Square, Circle and a Trace logo; closed manifold; assembled layout unchanged except the lower z (base z 0 maps to `-(rest_gap + under + plate)` as before: check the new numbers); print layout z 0..top; fit rule and blockers unchanged; `floor` missing in the config uses 1.5; `under <= floor` gives the "could not be built" blocker; PHP seeder test pins `under` 7.0 and `floor` 1.5.
+- [ ] **Step 2: Run** `npm run test:clicker`, see the new failures only.
+- [ ] **Step 3: Implement**; update `ClickerBody::sampleConfig()` (floor 1.5, under 7.0); README: closed bottom, switch pins must be trimmed (or use a pinless switch), the enclosed pocket.
+- [ ] **Step 4: Dev body row:** through tinker REPLACE only `keycap.base` on the active "Cherry MX keycap" row with the new block (keep other keys; report keys before and after).
+- [ ] **Step 5: Verify:** `npm run test:clicker`, full `vendor/bin/pest`, `npx vue-tsc --noEmit` (2 baseline TS2688 only), `npm run build`, eslint/Prettier on changed JS, Pint on changed PHP.
+- [ ] **Step 6: Browser check** (throwaway user, owner's real `18.png` uploaded through the page): the Trace preview shows a closed-bottom base (orbit under it: solid floor, no hole), the cap still sits partly inside; unlock the design (hollow ON), unzip the 3MF: `Base` has a solid z 0 face (no opening on the underside: check that vertices at z 0 form the full outline with no inner ring) and the cutout still at +/-7.05; clean up and verify zero leftovers.
+- [ ] **Step 7: Commit** `feat: close the bottom of the switch base`.
+
+---
+
+### Task 4: Docs and full verification
 
 **Files:** `README.md`, the two spec files' status lines
 
