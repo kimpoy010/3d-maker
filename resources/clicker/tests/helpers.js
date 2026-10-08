@@ -127,6 +127,62 @@ export function ownerLikeLogo(size = 500) {
     });
 }
 
+/** Distance from (x, y) to the segment a-b. */
+function segmentDistance(x, y, [ax, ay], [bx, by]) {
+    const [dx, dy] = [bx - ax, by - ay];
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)));
+
+    return Math.hypot(x - ax - t * dx, y - ay - t * dy);
+}
+
+/**
+ * A sparse three-letter monogram on a TRANSPARENT background, `width` x 2/3 `width` px (1500 x 1000 by default): black
+ * strokes 75 px (5 percent of the width) thick forming an open bracket, a P with a leg (R-like) and a K, with wide
+ * open concavities between and inside the letters. Edges are anti-aliased over about one pixel.
+ */
+export function monogramArtwork(width = 1500) {
+    const s = width / 1500;
+    const half = 37.5;
+    const boxes = [
+        // Open bracket: a stem and two arms to the right.
+        [87.5, 500, half, 400],
+        [250, 137.5, 200, half],
+        [250, 862.5, 200, half],
+        // R-like: stem, bowl (top, right side, middle) and a diagonal leg.
+        [557.5, 500, half, 400],
+        [710, 137.5, 190, half],
+        [862.5, 300, half, 200],
+        [710, 462.5, 190, half],
+        // K: the stem.
+        [1087.5, 500, half, 400],
+    ];
+    const strokes = [
+        [
+            [720, 500],
+            [950, 900],
+        ],
+        [
+            [1125, 520],
+            [1450, 110],
+        ],
+        [
+            [1125, 480],
+            [1450, 890],
+        ],
+    ];
+
+    return makeImage(width, Math.round((width * 2) / 3), (px, py) => {
+        const x = (px + 0.5) / s;
+        const y = (py + 0.5) / s;
+        let nearest = Infinity;
+        for (const [cx, cy, hw, hh] of boxes) nearest = Math.min(nearest, roundedRectDistance(x, y, cx, cy, hw, hh, 0));
+        for (const [a, b] of strokes) nearest = Math.min(nearest, segmentDistance(x, y, a, b) - half);
+        const alpha = Math.round(255 * Math.max(0, Math.min(1, 0.5 - nearest * s)));
+
+        return alpha === 0 ? null : [17, 17, 17, alpha];
+    });
+}
+
 /** A label grid from rows of text, e.g. ['.##', '#..'] where '.' is background (255) and digits are labels. */
 export function gridFromRows(rows) {
     const height = rows.length;

@@ -21,7 +21,7 @@ export const KEYCAP_DEFAULTS = {
 };
 
 /** Cap material kept around the switch cutout, mm: the cutout plus this on every side must fit in the cap outline. */
-const CUTOUT_MARGIN = 0.8;
+export const CUTOUT_MARGIN = 0.8;
 
 /** The fraction of the cap's height inside the base at rest: `settings.cap_insertion` clamped to 0.5..1, default 0.5. */
 export function capInsertion(settings) {

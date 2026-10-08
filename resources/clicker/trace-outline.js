@@ -3,14 +3,29 @@
  * Worked out on a coarse grid (about 512 cells across the artwork) so the live preview stays fast.
  */
 
+import { CUTOUT_MARGIN, baseFits, stemClearance } from './keycap.js';
 import { toMm } from './mesh.js';
-import { closeGaps, components, convexHull, dilate, ensureCcw, erode, fillHoles, poleOfInaccessibility, simplifyRing } from './shapes.js';
+import {
+    closeGaps,
+    components,
+    convexHull,
+    dilate,
+    distanceToZero,
+    ensureCcw,
+    erode,
+    fillHoles,
+    largestSquareCentre,
+    simplifyRing,
+} from './shapes.js';
 import { signedArea, traceLabel } from './trace.js';
 
 export const HULL_NOTE = 'The artwork has separate pieces, so the shape joins them with a wrapped outline.';
+export const FILLED_NOTE = 'The outline was filled in around your artwork so the cap can hold the switch.';
 
 /** Gap-closing radii in mm, tried in turn until the silhouette is one piece. */
 const CLOSING_RADII = [1, 2.5, 5, 8];
+/** Wider closings (mm) tried, in turn, when the shape cannot hold the switch; then the convex hull. */
+const SOLIDIFY_RADII = [2.5, 5, 8, 12, 16];
 const MAX_CELLS = 512;
 const MIN_CELL_MM = 0.08;
 const SIMPLIFY_MM = 0.03;
@@ -104,32 +119,78 @@ export function traceOutline({ image, frame, keycap }) {
     const mask = found ? silhouette : inArt;
 
     // 2. Close gaps until it is one piece (a piece inside another's hole counts as joined), else wrap it in its hull.
-    const notes = [];
     let solid = null;
-    for (const radius of CLOSING_RADII) {
+    let closedWith = CLOSING_RADII.length;
+    for (const [i, radius] of CLOSING_RADII.entries()) {
         const filled = fillHoles(closeGaps(mask, w, h, radius / cell), w, h);
         if (components(filled, w, h).count <= 1) {
-            solid = filled;
+            [solid, closedWith] = [filled, i];
             break;
         }
     }
-    if (!solid) {
-        solid = hullMask(mask, w, h);
-        notes.push(HULL_NOTE);
+    const separate = !solid;
+    if (separate) solid = hullMask(mask, w, h);
+
+    // 3-4. The cap shape for a solid mask: grown by the rim, its outer ring traced and simplified, and the stem at the
+    // centre of the largest axis-aligned square inside it (the switch needs a square). Candidates big enough for the
+    // switch cutout (plus a cell for the simplification) are preferred over the 2 percent window, so the tie-break
+    // never costs the fit. The outline runs along cell edges, half a cell short of the nearest empty cell's centre.
+    const { clearance, wall, cutout } = keycap.base;
+    const squareNeed = Math.ceil((cutout / 2 + CUTOUT_MARGIN) / cell + 1.5);
+    const shapeOf = (solidMask) => {
+        const grown = dilate(solidMask, w, h, keycap.rim / cell);
+        const rings = traceLabel(grown, w, h, 1).map((p) => p.outer);
+        const outer = rings.reduce((best, ring) => (Math.abs(signedArea(ring)) > Math.abs(signedArea(best)) ? ring : best));
+        const [{ outer: ringMm }] = toMm([{ outer, holes: [] }], grid);
+        const outline = ensureCcw(simplifyRing(ringMm, SIMPLIFY_MM));
+        const centre = largestSquareCentre(grown, w, h, squareNeed);
+        const cellIndex = Math.floor(centre.y) * w + Math.floor(centre.x);
+        const stem = { x: grid.left + centre.x * cell, y: grid.top - centre.y * cell };
+        const stemRadius = Math.max(0, distanceToZero(grown, w, h, true)[cellIndex] - 0.5) * cell;
+
+        return { grown, outline, centre, stem, stemRadius };
+    };
+    // Growth by `distance` mm: every point within `distance` of a set cell lies in a cell whose centre is within
+    // `distance` + one cell diagonal of a set cell's centre, so dilating by that radius keeps the grown ring at least
+    // `distance` away (at most about one cell diagonal more); a plain `distance / cell` falls a cell short along
+    // diagonal staircases.
+    const growRing = (grown, distance) => {
+        const pieces = maskPolygons(dilate(grown, w, h, distance / cell + Math.SQRT2), w, h, grid);
+
+        return pieces.reduce((best, piece) => (Math.abs(signedArea(piece.outer)) > Math.abs(signedArea(best.outer)) ? piece : best)).outer;
+    };
+    // The same test the analysis blocks on: room for the stem, the cutout square in the cap outline and the cavity
+    // square in the base outline.
+    const holds = (shape) =>
+        shape.stemRadius >= stemClearance(keycap) &&
+        baseFits({
+            cap: [{ outer: shape.outline, holes: [] }],
+            base: [{ outer: growRing(shape.grown, clearance + wall), holes: [] }],
+            stem: shape.stem,
+            keycap,
+        });
+
+    // Solidify: when the shape cannot hold the switch, close wider gaps (on a padded copy so wide closings are not
+    // clipped by the grid), then wrap the silhouette in its convex hull; the first variant that holds wins. When none
+    // does, the plain shape stays and the analysis blocks it.
+    const notes = [];
+    let shape = shapeOf(solid);
+    if (!holds(shape)) {
+        const radii = SOLIDIFY_RADII.filter((radius) => separate || radius > CLOSING_RADII[closedWith]);
+        const variants = [...radii.map((radius) => () => closeWide(mask, w, h, radius / cell)), () => hullMask(mask, w, h)];
+        for (const variant of variants) {
+            const candidate = variant();
+            if (!candidate) continue;
+            const filled = shapeOf(candidate);
+            if (holds(filled)) {
+                shape = filled;
+                notes.push(FILLED_NOTE);
+                break;
+            }
+        }
     }
-
-    // 3. Grow by the rim, trace the outer ring, simplify.
-    const grown = dilate(solid, w, h, keycap.rim / cell);
-    const rings = traceLabel(grown, w, h, 1).map((p) => p.outer);
-    const outer = rings.reduce((best, ring) => (Math.abs(signedArea(ring)) > Math.abs(signedArea(best)) ? ring : best));
-    const [{ outer: ringMm }] = toMm([{ outer, holes: [] }], grid);
-    const outline = ensureCcw(simplifyRing(ringMm, SIMPLIFY_MM));
-
-    // 4. Stem at the pole of inaccessibility. The outline runs along cell edges, half a cell short of the
-    // nearest empty cell's centre.
-    const pole = poleOfInaccessibility(grown, w, h);
-    const stem = { x: grid.left + pole.x * cell, y: grid.top - pole.y * cell };
-    const stemRadius = Math.max(0, pole.r - 0.5) * cell;
+    if (separate && !notes.includes(FILLED_NOTE)) notes.push(HULL_NOTE);
+    const { grown, outline, centre, stem, stemRadius } = shape;
 
     // 5. Insets and the hollow cap's cavity, from the same grown mask. The boss removal clears every cell whose
     // centre is within the radius plus half a cell diagonal, so the solid boss covers the whole disc.
@@ -138,8 +199,8 @@ export function traceOutline({ image, frame, keycap }) {
     const cavity = (wall, bossRadius) => {
         const mask = insetMask(wall);
         const reach = bossRadius / cell + Math.SQRT1_2;
-        const sx = pole.x - 0.5;
-        const sy = pole.y - 0.5;
+        const sx = centre.x - 0.5;
+        const sy = centre.y - 0.5;
         for (let y = Math.max(0, Math.floor(sy - reach)); y <= Math.min(h - 1, Math.ceil(sy + reach)); y++) {
             for (let x = Math.max(0, Math.floor(sx - reach)); x <= Math.min(w - 1, Math.ceil(sx + reach)); x++) {
                 if ((x - sx) ** 2 + (y - sy) ** 2 <= reach * reach) mask[y * w + x] = 0;
@@ -149,17 +210,26 @@ export function traceOutline({ image, frame, keycap }) {
         return maskPolygons(mask, w, h, grid);
     };
 
-    // 6. Growth for the switch base's pocket and outline: the same grown mask dilated, its outer ring. Every point
-    // within `distance` of a set cell lies in a cell whose centre is within `distance` + one cell diagonal of a set
-    // cell's centre, so dilating by that radius keeps the grown ring at least `distance` away (at most about one cell
-    // diagonal more); a plain `distance / cell` falls a cell short along diagonal staircases.
-    const grow = (distance) => {
-        const pieces = maskPolygons(dilate(grown, w, h, distance / cell + Math.SQRT2), w, h, grid);
-
-        return pieces.reduce((best, piece) => (Math.abs(signedArea(piece.outer)) > Math.abs(signedArea(best.outer)) ? piece : best)).outer;
-    };
+    // 6. Growth for the switch base's pocket and outline: the same grown mask dilated, its outer ring.
+    const grow = (distance) => growRing(grown, distance);
 
     return { outline, stem, stemRadius, notes, inset, cavity, grow };
+}
+
+/**
+ * Close gaps of `radius` cells and fill holes on a copy padded by the radius (so the closing is not clipped by the
+ * grid), cropped back; null when the result is not one piece.
+ */
+function closeWide(mask, width, height, radius) {
+    const pad = Math.ceil(radius) + 1;
+    const [pw, ph] = [width + 2 * pad, height + 2 * pad];
+    const padded = new Uint8Array(pw * ph);
+    for (let y = 0; y < height; y++) padded.set(mask.subarray(y * width, (y + 1) * width), (y + pad) * pw + pad);
+    const closed = fillHoles(closeGaps(padded, pw, ph, radius), pw, ph);
+    const out = new Uint8Array(width * height);
+    for (let y = 0; y < height; y++) out.set(closed.subarray((y + pad) * pw + pad, (y + pad) * pw + pad + width), y * width);
+
+    return components(out, width, height).count === 1 ? out : null;
 }
 
 /**

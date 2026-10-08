@@ -181,20 +181,61 @@ export function components(mask, width, height) {
     return { count, labels };
 }
 
-/** The pixel centre farthest from the background (the outside counts as background), and that distance. */
-export function poleOfInaccessibility(mask, width, height) {
-    const squared = squaredToZero(mask, width, height, true);
-    let best = -1;
-    let bestAt = 0;
-    for (let i = 0; i < squared.length; i++) {
-        if (squared[i] > best) {
-            best = squared[i];
-            bestAt = i;
+/**
+ * Chessboard (L-infinity) distance from every pixel to the nearest clear pixel, the outside counting as clear: a set
+ * pixel at distance d is the centre of a (2d - 1) x (2d - 1) block of set pixels. Two-pass chamfer; 0 on clear pixels.
+ */
+export function chessboardDistance(mask, width, height) {
+    const d = new Int32Array(width * height);
+    const at = (x, y) => (x < 0 || y < 0 || x >= width || y >= height ? 0 : d[y * width + x]);
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (mask[y * width + x]) d[y * width + x] = 1 + Math.min(at(x - 1, y), at(x - 1, y - 1), at(x, y - 1), at(x + 1, y - 1));
         }
     }
-    const x = bestAt % width;
+    for (let y = height - 1; y >= 0; y--) {
+        for (let x = width - 1; x >= 0; x--) {
+            const i = y * width + x;
+            if (d[i]) d[i] = Math.min(d[i], 1 + Math.min(at(x + 1, y), at(x + 1, y + 1), at(x, y + 1), at(x - 1, y + 1)));
+        }
+    }
 
-    return { x: x + 0.5, y: (bestAt - x) / width + 0.5, r: Math.sqrt(Math.max(best, 0)) };
+    return d;
+}
+
+/**
+ * The centre of the largest axis-aligned square of set pixels: among the pixels whose chessboard distance is within
+ * 2 percent of the maximum (but at least `minimum`, capped at the maximum), the one nearest the centre of mass of
+ * the set pixels. Returns the pixel centre and its chessboard distance `d`.
+ */
+export function largestSquareCentre(mask, width, height, minimum = 0) {
+    const d = chessboardDistance(mask, width, height);
+    let max = 0;
+    let [sx, sy, n] = [0, 0, 0];
+    for (let i = 0; i < d.length; i++) {
+        if (!mask[i]) continue;
+        max = Math.max(max, d[i]);
+        const x = i % width;
+        sx += x;
+        sy += (i - x) / width;
+        n++;
+    }
+    const [cx, cy] = n ? [sx / n, sy / n] : [width / 2, height / 2];
+    const floor = Math.max(0.98 * max, Math.min(max, minimum));
+    let best = { x: 0.5, y: 0.5, d: 0 };
+    let bestDistance = Infinity;
+    for (let i = 0; i < d.length; i++) {
+        if (d[i] < floor || d[i] === 0) continue;
+        const x = i % width;
+        const y = (i - x) / width;
+        const distance = (x - cx) ** 2 + (y - cy) ** 2;
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = { x: x + 0.5, y: y + 0.5, d: d[i] };
+        }
+    }
+
+    return best;
 }
 
 /** Convex hull, counter-clockwise, without repeating the first point (Andrew's monotone chain). */

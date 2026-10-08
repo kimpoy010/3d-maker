@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+    chessboardDistance,
     closeGaps,
     components,
     convexHull,
@@ -10,7 +11,7 @@ import {
     ensureCcw,
     erode,
     fillHoles,
-    poleOfInaccessibility,
+    largestSquareCentre,
     simplifyRing,
 } from '../shapes.js';
 import { signedArea } from '../trace.js';
@@ -122,19 +123,61 @@ test('components counts separate blocks and treats diagonal contact as separate'
     assert.equal(components(edge.mask, 2, 2).count, 1);
 });
 
-test('poleOfInaccessibility of a square is its centre, of a thick plus its crossing', () => {
-    const square = rect(15, 15, 3, 3, 11, 11);
-    const pole = poleOfInaccessibility(square, 15, 15);
-    assert.deepEqual(pole, { x: 7.5, y: 7.5, r: 5 });
+test('chessboardDistance: steps to the nearest clear pixel counting diagonals as one, the outside as clear', () => {
+    const full = chessboardDistance(new Uint8Array(25).fill(1), 5, 5);
+    assert.deepEqual([...full], [1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 2, 3, 2, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1]);
 
-    // Bars 3 wide (indexes 6..8) across a 15x15 grid. The centre pixel (7,7) is sqrt(2^2 + 2^2) from the
-    // nearest inner corner background pixel (5,5); every arm pixel is at most 2 from a bar edge.
+    // One clear pixel at (1, 1) of a 7x7 block inside a 9x9 grid.
+    const mask = rect(9, 9, 1, 1, 7, 7);
+    mask[2 * 9 + 2] = 0;
+    const d = chessboardDistance(mask, 9, 9);
+    assert.equal(d[0], 0);
+    assert.equal(d[2 * 9 + 2], 0);
+    assert.equal(d[3 * 9 + 3], 1, 'diagonal neighbour of the clear pixel');
+    assert.equal(d[4 * 9 + 5], 3, '(5, 4) is 3 steps from the clear pixel and from the outside');
+    assert.equal(d[5 * 9 + 5], 3);
+    assert.equal(d[4 * 9 + 4], 2);
+
+    // Agrees with a brute-force minimum over all clear pixels and the outside.
+    const random = new Uint8Array(13 * 11).map((_, i) => ((i * 7919) % 11 < 9 ? 1 : 0));
+    const fast = chessboardDistance(random, 13, 11);
+    for (let y = 0; y < 11; y++) {
+        for (let x = 0; x < 13; x++) {
+            let best = Math.min(x + 1, y + 1, 13 - x, 11 - y);
+            for (let v = 0; v < 11; v++)
+                for (let u = 0; u < 13; u++) if (!random[v * 13 + u]) best = Math.min(best, Math.max(Math.abs(u - x), Math.abs(v - y)));
+            assert.equal(fast[y * 13 + x], random[y * 13 + x] ? best : 0, `(${x}, ${y})`);
+        }
+    }
+});
+
+test('largestSquareCentre: the centre of a square; the crossing of a plus; ties go to the centre of mass', () => {
+    assert.deepEqual(largestSquareCentre(rect(15, 15, 3, 3, 11, 11), 15, 15), { x: 7.5, y: 7.5, d: 5 });
+
+    // A plus: every cell on a bar's centre line ties, the centre of mass picks the crossing.
     const plus = rect(15, 15, 0, 6, 14, 8);
     rect(15, 15, 6, 0, 8, 14, plus);
-    const cross = poleOfInaccessibility(plus, 15, 15);
-    assert.equal(cross.x, 7.5);
-    assert.equal(cross.y, 7.5);
-    assert.ok(Math.abs(cross.r - Math.sqrt(8)) < 1e-5);
+    assert.deepEqual(largestSquareCentre(plus, 15, 15), { x: 7.5, y: 7.5, d: 2 });
+
+    // A wide rectangle: the middle of its centre row.
+    assert.deepEqual(largestSquareCentre(rect(21, 9, 1, 1, 19, 7), 21, 9), { x: 10.5, y: 4.5, d: 4 });
+
+    // An L: a 9 wide vertical arm and a 3 high foot reaching far right. The square sits in the thick arm.
+    const l = rect(40, 20, 1, 1, 9, 18);
+    rect(40, 20, 1, 16, 38, 18, l);
+    const centre = largestSquareCentre(l, 40, 20);
+    assert.equal(centre.d, 5);
+    assert.ok(centre.x >= 1 && centre.x <= 10 && centre.y >= 5 && centre.y <= 14, JSON.stringify(centre));
+
+    // A 120 square (d 60 at its centre) with a long thin tail to the right pulling the centre of mass right: the
+    // 2 percent window lets a d 59 cell win; `minimum` raises the window (never above the maximum).
+    const tailed = rect(400, 122, 1, 1, 120, 120);
+    rect(400, 122, 121, 60, 398, 62, tailed);
+    const loose = largestSquareCentre(tailed, 400, 122);
+    assert.equal(loose.d, 59);
+    assert.ok(loose.x > 61, JSON.stringify(loose));
+    assert.equal(largestSquareCentre(tailed, 400, 122, 60).d, 60);
+    assert.equal(largestSquareCentre(tailed, 400, 122, 99).d, 60, 'a minimum above the maximum keeps the maximum');
 });
 
 test('convexHull of a square with an interior point is the four corners, counter-clockwise', () => {
