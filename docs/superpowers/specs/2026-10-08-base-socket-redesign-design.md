@@ -17,8 +17,8 @@ clearance 0.3     gap between the cap and the pocket wall, each side
 wall      2.0     base wall thickness around the pocket
 plate     1.5     floor plate the switch snaps into
 floor     1.5     solid floor: the base is CLOSED at the bottom (owner request, 2026-10-08)
-under     7.0     total height below the plate: floor + the enclosed switch pocket (5.5)
-cavity    16.2    square pocket under the plate for the switch body (enclosed: floor below, plate above, reached only through the cutout; switch pins must be trimmed or the switch pinless)
+under     9.0     total height below the plate: floor + the enclosed switch pocket (7.5; a Cherry MX switch's centre locating post reaches about 3 mm below the housing, so a 5.5 mm pocket would probably not let the switch seat; general MX knowledge, unverified, the owner should measure their switch)
+cavity    16.2    square pocket under the plate for the switch body (enclosed: floor below, plate above, reached only through the cutout; trim the metal pins or use a pinless switch; the 7.5 mm depth leaves room for the centre post)
 cutout    14.1    square hole through the plate (MX plate cutout plus 0.1)
 rest_gap  8.0     distance from the plate top to the cap's bottom face at rest
 spacing   10      gap between the parts in the print layout

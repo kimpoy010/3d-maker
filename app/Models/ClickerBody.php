@@ -64,7 +64,7 @@ class ClickerBody extends Model
                 // colour. `rest_gap`, `under`, `floor`, `cavity`, `clearance` and `cutout` are provisional until a
                 // test print.
                 'base' => [
-                    'clearance' => 0.3, 'wall' => 2.0, 'plate' => 1.5, 'under' => 7.0, 'floor' => 1.5, 'cavity' => 16.2, 'cutout' => 14.1,
+                    'clearance' => 0.3, 'wall' => 2.0, 'plate' => 1.5, 'under' => 9.0, 'floor' => 1.5, 'cavity' => 16.2, 'cutout' => 14.1,
                     'rest_gap' => 8.0, 'spacing' => 10, 'hex' => '#6B7280',
                 ],
             ],

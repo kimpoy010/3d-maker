@@ -154,7 +154,7 @@ test('keycapConfig carries the new base defaults, deep merges them and ignores t
         clearance: 0.3,
         wall: 2.0,
         plate: 1.5,
-        under: 7.0,
+        under: 9.0,
         floor: 1.5,
         cavity: 16.2,
         cutout: 14.1,

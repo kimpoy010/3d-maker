@@ -17,7 +17,7 @@ export const KEYCAP_DEFAULTS = {
     stem: { span: 4.2, arm: 1.35, wall: 1.2 },
     hollow: { wall: 1.6, plate: 2.0, boss_radius: 3.6 },
     // The open-top switch base the cap slides into (mm): see buildBase.
-    base: { clearance: 0.3, wall: 2.0, plate: 1.5, under: 7.0, floor: 1.5, cavity: 16.2, cutout: 14.1, rest_gap: 8.0, spacing: 10, hex: '#6B7280' },
+    base: { clearance: 0.3, wall: 2.0, plate: 1.5, under: 9.0, floor: 1.5, cavity: 16.2, cutout: 14.1, rest_gap: 8.0, spacing: 10, hex: '#6B7280' },
 };
 
 /** Cap material kept around the switch cutout, mm: the cutout plus this on every side must fit in the cap outline. */
