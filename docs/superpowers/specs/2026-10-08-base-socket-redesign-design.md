@@ -44,6 +44,14 @@ One closed manifold shell built from planar faces and wall strips, welded, and p
 
 **Fit rule** (blocker `This shape is too small to hold the switch base. Make the artwork larger or choose Square or Circle.`): the square `cutout + 2*0.8` centred on the stem lies inside the **cap outline** (corners, edge midpoints and no outline hole or island inside it); and the cavity square `cavity` centred on the stem lies inside the **base outline**. The old inset-based rule is removed. Verification failure of the shell is still a blocker (`The switch base could not be built for this shape. ...`).
 
+**Solid enough to hold the switch** (Trace only, added 2026-10-08 for sparse artwork such as letter monograms):
+- **Stem position:** the stem sits at the centre of the largest axis-aligned square inside the rim-grown silhouette (see the keycap body spec).
+- **When the outline is filled in:** if the traced shape cannot hold the switch (stem clearance and the fit rule above, the same test the analysis blocks on), the outline is rebuilt from the silhouette with wider gap closings of 2.5, 5, 8, 12 and 16 mm (each a closing, then fill holes, then the rim). Only closings wider than the one the connectivity step already used are tried. The last resort is the silhouette's convex hull grown by the rim.
+- **Which variant wins:** the narrowest variant that holds. The editor then shows the note `The outline was filled in around your artwork so the cap can hold the switch.` This is separate from the separate-pieces hull note.
+- **Hull-first early-out:** every closing lies inside the convex hull, and a bigger shape holds at least as well. So the hull is checked first. If even the hull cannot hold the switch, the plain outline is kept at once and gets the existing blockers; tiny artwork (a 6 mm blob, a thin line) is still blocked. This also applies when the shape already is the hull, for separate pieces. Otherwise the closings are searched narrowest first.
+- **Ordinary logos are unaffected:** they already hold, so they keep exactly their old outline.
+- **Visible side effect:** the stem can jump a few mm between nearby scales when the largest square moves to another plateau of the shape. This is correct, but it is visible while scaling.
+
 ## Layouts
 
 `assembled` (editor): the cap as today (its bottom face at z 0); the base translated so that its plate top is at z `-rest_gap`, i.e. the base's z 0 maps to `-(rest_gap + under + plate)`; the rim then sits at z `cap_insertion * keycap.height`, so the lower part of the cap is inside the pocket. `print`: the cap as today; the base stays upright (no rotation) with its z 0 on the bed, translated in +x by `outline width + spacing` where the width is that of the base outline (so the clearance to the cap and colour parts is at least `spacing`).

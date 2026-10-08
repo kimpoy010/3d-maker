@@ -128,20 +128,40 @@ function flipSlivers(flat, triangles, eps) {
     const between = (p, m, r) => (x(m) - x(p)) * (x(r) - x(m)) + (y(m) - y(p)) * (y(r) - y(m)) > 0;
     const sliver = ([a, b, c]) => Math.abs(area2(flat, a, b, c)) <= eps;
 
-    for (let guard = 0; guard < tris.length; guard++) {
-        const at = tris.findIndex(sliver);
-        if (at < 0) break;
+    // The lowest-index sliver is flipped first, every time. The edge owners and the sliver flags are kept up to date
+    // as triangles change (a flip changes only the two triangles involved), instead of being rebuilt per flip.
+    const flags = Uint8Array.from(tris, (tri) => (sliver(tri) ? 1 : 0));
+    const owner = new Map();
+    const own = (i) => tris[i].forEach((v, k) => owner.set(v * n + tris[i][(k + 1) % 3], i));
+    const disown = (i) =>
+        tris[i].forEach((v, k) => {
+            const key = v * n + tris[i][(k + 1) % 3];
+            if (owner.get(key) === i) owner.delete(key);
+        });
+    tris.forEach((_, i) => own(i));
+    let from = 0;
 
-        const owner = new Map();
-        tris.forEach((tri, i) => tri.forEach((v, k) => owner.set(v * n + tri[(k + 1) % 3], i)));
+    for (let guard = 0; guard < tris.length; guard++) {
+        let at = from;
+        while (at < tris.length && !flags[at]) at++;
+        if (at >= tris.length) break;
+
         const [a, b, c] = tris[at];
         const [p, m, r] = between(c, a, b) ? [c, a, b] : between(a, b, c) ? [a, b, c] : [b, c, a];
         const across = owner.get(p * n + r);
         if (across === undefined) break;
         const other = tris[across];
         const d = other.find((v) => v !== p && v !== r);
+        disown(at);
+        disown(across);
         tris[at] = [p, m, d];
         tris[across] = [m, r, d];
+        own(at);
+        own(across);
+        flags[at] = sliver(tris[at]) ? 1 : 0;
+        flags[across] = sliver(tris[across]) ? 1 : 0;
+        // Every triangle before `at` was clean; only `across` may have changed there.
+        from = Math.min(at, across);
     }
 
     return tris.flat();

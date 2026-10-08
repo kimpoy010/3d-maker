@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
     chessboardDistance,
+    clearDistance,
     closeGaps,
     components,
     convexHull,
     crossRing,
     dilate,
-    distanceToZero,
     ensureCcw,
     erode,
     fillHoles,
@@ -35,24 +35,29 @@ function rect(width, height, x0, y0, x1, y1, into = new Uint8Array(width * heigh
 
 const count = (mask) => mask.reduce((a, b) => a + b, 0);
 
-test('distanceToZero: diagonal neighbour is sqrt(2) and a far pixel is the exact Euclidean distance', () => {
-    const mask = new Uint8Array(25).fill(1);
-    mask[0] = 0;
-    const d = distanceToZero(mask, 5, 5);
+test('clearDistance: Euclidean distance to the nearest clear pixel or the outside, searched within the chessboard bound', () => {
+    const full = new Uint8Array(9).fill(1);
+    assert.equal(clearDistance(full, 3, 3, 0, 0, 1), 1, 'a corner pixel is one step from the outside');
+    assert.equal(clearDistance(full, 3, 3, 1, 1, 2), 2, 'the centre is two steps from the outside');
 
-    assert.equal(d[0], 0);
-    assert.ok(Math.abs(d[1 * 5 + 1] - Math.SQRT2) < 1e-6);
-    assert.ok(Math.abs(d[3 * 5 + 4] - 5) < 1e-6, 'pixel (4,3) is a 3-4-5 triangle from (0,0)');
-    assert.ok(Math.abs(d[4 * 5 + 4] - Math.hypot(4, 4)) < 1e-5);
-});
+    // A 13x13 block with one clear pixel at (3, 3): (6, 7) is a 3-4-5 triangle from it and 6 from the outside.
+    const mask = new Uint8Array(169).fill(1);
+    mask[3 * 13 + 3] = 0;
+    assert.ok(Math.abs(clearDistance(mask, 13, 13, 4, 4, 1) - Math.SQRT2) < 1e-12);
+    assert.equal(clearDistance(mask, 13, 13, 6, 7, 4), 5);
+    assert.equal(clearDistance(mask, 13, 13, 3, 3, 0), 0);
 
-test('distanceToZero: the image border is background only when outsideIsZero is passed', () => {
-    const mask = new Uint8Array(9).fill(1);
-    const inside = distanceToZero(mask, 3, 3, true);
-
-    assert.equal(inside[0], 1, 'a corner pixel is one step from the outside');
-    assert.equal(inside[4], 2, 'the centre is two steps from the outside');
-    assert.ok(distanceToZero(mask, 3, 3)[4] > 1e6, 'with no background anywhere the distance is effectively infinite');
+    // Agrees with a brute-force minimum when the bound is each pixel's chessboard distance.
+    const random = new Uint8Array(17 * 13).map((_, i) => ((i * 7919) % 13 < 11 ? 1 : 0));
+    const board = chessboardDistance(random, 17, 13);
+    for (let y = 0; y < 13; y++) {
+        for (let x = 0; x < 17; x++) {
+            if (!random[y * 17 + x]) continue;
+            let best = Math.min(x + 1, y + 1, 17 - x, 13 - y) ** 2;
+            for (let v = 0; v < 13; v++) for (let u = 0; u < 17; u++) if (!random[v * 17 + u]) best = Math.min(best, (u - x) ** 2 + (v - y) ** 2);
+            assert.equal(clearDistance(random, 17, 13, x, y, board[y * 17 + x]), Math.sqrt(best), `(${x}, ${y})`);
+        }
+    }
 });
 
 test('dilate grows a single pixel into the 13-pixel disc of radius 2, and radius 0 copies', () => {
@@ -152,15 +157,15 @@ test('chessboardDistance: steps to the nearest clear pixel counting diagonals as
 });
 
 test('largestSquareCentre: the centre of a square; the crossing of a plus; ties go to the centre of mass', () => {
-    assert.deepEqual(largestSquareCentre(rect(15, 15, 3, 3, 11, 11), 15, 15), { x: 7.5, y: 7.5, d: 5 });
+    assert.deepEqual(largestSquareCentre(rect(15, 15, 3, 3, 11, 11), 15, 15), { x: 7.5, y: 7.5, d: 5, max: 5 });
 
     // A plus: every cell on a bar's centre line ties, the centre of mass picks the crossing.
     const plus = rect(15, 15, 0, 6, 14, 8);
     rect(15, 15, 6, 0, 8, 14, plus);
-    assert.deepEqual(largestSquareCentre(plus, 15, 15), { x: 7.5, y: 7.5, d: 2 });
+    assert.deepEqual(largestSquareCentre(plus, 15, 15), { x: 7.5, y: 7.5, d: 2, max: 2 });
 
     // A wide rectangle: the middle of its centre row.
-    assert.deepEqual(largestSquareCentre(rect(21, 9, 1, 1, 19, 7), 21, 9), { x: 10.5, y: 4.5, d: 4 });
+    assert.deepEqual(largestSquareCentre(rect(21, 9, 1, 1, 19, 7), 21, 9), { x: 10.5, y: 4.5, d: 4, max: 4 });
 
     // An L: a 9 wide vertical arm and a 3 high foot reaching far right. The square sits in the thick arm.
     const l = rect(40, 20, 1, 1, 9, 18);
@@ -175,6 +180,7 @@ test('largestSquareCentre: the centre of a square; the crossing of a plus; ties 
     rect(400, 122, 121, 60, 398, 62, tailed);
     const loose = largestSquareCentre(tailed, 400, 122);
     assert.equal(loose.d, 59);
+    assert.equal(loose.max, 60);
     assert.ok(loose.x > 61, JSON.stringify(loose));
     assert.equal(largestSquareCentre(tailed, 400, 122, 60).d, 60);
     assert.equal(largestSquareCentre(tailed, 400, 122, 99).d, 60, 'a minimum above the maximum keeps the maximum');

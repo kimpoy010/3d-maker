@@ -77,15 +77,6 @@ function squaredToZero(mask, width, height, outsideIsZero) {
     return out;
 }
 
-/** Euclidean distance from every pixel to the nearest 0 pixel (0 for 0 pixels). */
-export function distanceToZero(mask, width, height, outsideIsZero = false) {
-    const squared = squaredToZero(mask, width, height, outsideIsZero);
-    const out = new Float32Array(squared.length);
-    for (let i = 0; i < out.length; i++) out[i] = Math.sqrt(squared[i]);
-
-    return out;
-}
-
 /** Disc dilation: set where a set pixel lies within `radius` (Euclidean, inclusive). */
 export function dilate(mask, width, height, radius) {
     if (radius <= 0) return Uint8Array.from(mask);
@@ -182,6 +173,27 @@ export function components(mask, width, height) {
 }
 
 /**
+ * Euclidean distance (pixels) from the centre of pixel (x, y) to the nearest clear pixel centre, the outside of the
+ * grid counting as clear: the value a full distance transform with the outside as background gives at that pixel.
+ * `d` is a chessboard bound on that distance (the pixel's `chessboardDistance`): a clear pixel lies within `d`
+ * chessboard steps, so within `d` x sqrt 2, and only that box is searched.
+ */
+export function clearDistance(mask, width, height, x, y, d) {
+    let best = Math.min(x + 1, y + 1, width - x, height - y) ** 2;
+    const reach = Math.ceil(d * Math.SQRT2);
+    for (let v = Math.max(0, y - reach); v <= Math.min(height - 1, y + reach); v++) {
+        const dy2 = (v - y) ** 2;
+        if (dy2 >= best) continue;
+        const row = v * width;
+        for (let u = Math.max(0, x - reach); u <= Math.min(width - 1, x + reach); u++) {
+            if (!mask[row + u]) best = Math.min(best, (u - x) ** 2 + dy2);
+        }
+    }
+
+    return Math.sqrt(best);
+}
+
+/**
  * Chessboard (L-infinity) distance from every pixel to the nearest clear pixel, the outside counting as clear: a set
  * pixel at distance d is the centre of a (2d - 1) x (2d - 1) block of set pixels. Two-pass chamfer; 0 on clear pixels.
  */
@@ -206,7 +218,7 @@ export function chessboardDistance(mask, width, height) {
 /**
  * The centre of the largest axis-aligned square of set pixels: among the pixels whose chessboard distance is within
  * 2 percent of the maximum (but at least `minimum`, capped at the maximum), the one nearest the centre of mass of
- * the set pixels. Returns the pixel centre and its chessboard distance `d`.
+ * the set pixels. Returns the pixel centre, its chessboard distance `d` and the maximum distance `max`.
  */
 export function largestSquareCentre(mask, width, height, minimum = 0) {
     const d = chessboardDistance(mask, width, height);
@@ -222,7 +234,7 @@ export function largestSquareCentre(mask, width, height, minimum = 0) {
     }
     const [cx, cy] = n ? [sx / n, sy / n] : [width / 2, height / 2];
     const floor = Math.max(0.98 * max, Math.min(max, minimum));
-    let best = { x: 0.5, y: 0.5, d: 0 };
+    let best = { x: 0.5, y: 0.5, d: 0, max };
     let bestDistance = Infinity;
     for (let i = 0; i < d.length; i++) {
         if (d[i] < floor || d[i] === 0) continue;
@@ -231,7 +243,7 @@ export function largestSquareCentre(mask, width, height, minimum = 0) {
         const distance = (x - cx) ** 2 + (y - cy) ** 2;
         if (distance < bestDistance) {
             bestDistance = distance;
-            best = { x: x + 0.5, y: y + 0.5, d: d[i] };
+            best = { x: x + 0.5, y: y + 0.5, d: d[i], max };
         }
     }
 

@@ -128,6 +128,56 @@ test('an L-shaped silhouette puts the stem inside the thick arm', () => {
     assert.ok(py > 20 && py < 240, `stem row ${py}`);
 });
 
+test('a thick L at scale 0.8: every closing fails, the convex hull holds the switch, with the note', () => {
+    // 90 px legs on a 400 px image: the column and the foot are too narrow even with their corner filled in, but the
+    // triangle-like hull holds the switch.
+    const corners = [
+        [20, 20],
+        [110, 20],
+        [380, 290],
+        [380, 380],
+        [20, 380],
+    ];
+    const l = makeImage(400, 400, (x, y) =>
+        (x >= 20 && x < 110 && y >= 20 && y < 380) || (x >= 20 && x < 380 && y >= 290 && y < 380) ? [29, 78, 216] : null,
+    );
+    const mmPerPx = (30 / 400) * 0.8;
+    const frame = { left: -200 * mmPerPx, top: 200 * mmPerPx, mmPerPx };
+    const traced = traceOutline({ image: l, frame, keycap });
+
+    assert.deepEqual(traced.notes, [FILLED_NOTE]);
+    // The outline is the hull grown by the rim: its area is the hull's plus perimeter x rim plus pi rim².
+    const hull = corners.map(([x, y]) => [frame.left + x * mmPerPx, frame.top - y * mmPerPx]);
+    let [area, perimeter] = [0, 0];
+    hull.forEach(([x, y], i) => {
+        const [nx, ny] = hull[(i + 1) % hull.length];
+        area += (x * ny - nx * y) / 2;
+        perimeter += Math.hypot(nx - x, ny - y);
+    });
+    const expected = Math.abs(area) + perimeter * keycap.rim + Math.PI * keycap.rim ** 2;
+    const outlineArea = Math.abs(
+        traced.outline.reduce((sum, [x, y], i, ring) => sum + (x * ring[(i + 1) % ring.length][1] - ring[(i + 1) % ring.length][0] * y) / 2, 0),
+    );
+    assert.ok(Math.abs(outlineArea - expected) / expected < 0.02, `outline ${outlineArea} vs grown hull ${expected}`);
+
+    const settings = { ...SETTINGS, colors: [{ hex: '#1D4ED8', height_mm: 1, enabled: true }], base_shape: 'trace', scale: 0.8 };
+    const analysis = analyzeArtwork(l, settings, KEYCAP_BODY, 'preview');
+    assert.deepEqual(analysis.blockers, []);
+    assert.ok(analysis.notes.includes(FILLED_NOTE));
+    assert.ok(isClosedManifold(buildParts(analysis, settings, KEYCAP_BODY).at(-1)));
+});
+
+test('preview and final agree on the outcome for a shape that needs filling in', () => {
+    const settings = { ...SETTINGS, colors: BLACK, base_shape: 'trace', scale: 0.8 };
+    const outcome = (quality) => {
+        const { blockers, notes } = analyzeArtwork(monogramArtwork(), settings, KEYCAP_BODY, quality);
+        return { blockers, filled: notes.includes(FILLED_NOTE), hull: notes.includes(HULL_NOTE) };
+    };
+
+    assert.deepEqual(outcome('preview'), { blockers: [], filled: true, hull: false });
+    assert.deepEqual(outcome('final'), outcome('preview'));
+});
+
 test('a monogram stays fast: analyse and build under 1 s warm', () => {
     const settings = { ...SETTINGS, colors: BLACK, base_shape: 'trace' };
     const image = monogramArtwork();

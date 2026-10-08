@@ -3,14 +3,14 @@
  * Worked out on a coarse grid (about 512 cells across the artwork) so the live preview stays fast.
  */
 
-import { CUTOUT_MARGIN, baseFits, stemClearance } from './keycap.js';
+import { CUTOUT_MARGIN, cavityFits, cutoutFits, stemClearance } from './keycap.js';
 import { toMm } from './mesh.js';
 import {
+    clearDistance,
     closeGaps,
     components,
     convexHull,
     dilate,
-    distanceToZero,
     ensureCcw,
     erode,
     fillHoles,
@@ -83,7 +83,11 @@ function hullMask(mask, width, height) {
  * @returns {{outline: number[][], stem: {x: number, y: number}, stemRadius: number, notes: string[],
  *   inset: (distance: number) => {outer, holes}[], cavity: (wall: number, bossRadius: number) => {outer, holes}[],
  *   grow: (distance: number) => number[][]}}
- *   outline in mm (counter-clockwise), the stem at the point farthest from it, and that distance in mm; `inset`
+ *   outline in mm (counter-clockwise); the stem at the centre of the largest axis-aligned square of cells inside the
+ *   rim-grown mask (chessboard distance), chosen among the cells within 2 percent of the largest (but at least big
+ *   enough for the switch cutout when one is) as the one nearest that mask's centre of mass; `stemRadius` the
+ *   Euclidean distance in mm from the stem to the outline; `notes` (separate pieces wrapped, or the outline filled
+ *   in so the cap can hold the switch); `inset`
  *   erodes the grown silhouette by `distance` mm, `cavity` also removes the boss disc around the stem (both in mm,
  *   outer rings CCW, holes CW); `grow` dilates it by `distance` mm and returns the outer ring (mm, CCW; holes the
  *   dilation closes off are ignored). The grid pads the artwork by rim + 8 mm, so growth up to 8 mm is never clipped.
@@ -136,60 +140,83 @@ export function traceOutline({ image, frame, keycap }) {
     // switch cutout (plus a cell for the simplification) are preferred over the 2 percent window, so the tie-break
     // never costs the fit. The outline runs along cell edges, half a cell short of the nearest empty cell's centre.
     const { clearance, wall, cutout } = keycap.base;
-    const squareNeed = Math.ceil((cutout / 2 + CUTOUT_MARGIN) / cell + 1.5);
-    const shapeOf = (solidMask) => {
+    const squareHalf = cutout / 2 + CUTOUT_MARGIN;
+    const squareNeed = Math.ceil(squareHalf / cell + 1.5);
+    const shapeOf = (solidMask, { quick = false } = {}) => {
         const grown = dilate(solidMask, w, h, keycap.rim / cell);
+        const centre = largestSquareCentre(grown, w, h, squareNeed);
+        // Quick reject: no axis-aligned square of set cells can hold the cutout square (the simplified outline strays
+        // at most SIMPLIFY_MM from the cell edges, and a cell of slack is kept), so this shape cannot hold the switch.
+        if (quick && (centre.max + 2) * cell + SIMPLIFY_MM < squareHalf) return null;
         const rings = traceLabel(grown, w, h, 1).map((p) => p.outer);
         const outer = rings.reduce((best, ring) => (Math.abs(signedArea(ring)) > Math.abs(signedArea(best)) ? ring : best));
         const [{ outer: ringMm }] = toMm([{ outer, holes: [] }], grid);
         const outline = ensureCcw(simplifyRing(ringMm, SIMPLIFY_MM));
-        const centre = largestSquareCentre(grown, w, h, squareNeed);
-        const cellIndex = Math.floor(centre.y) * w + Math.floor(centre.x);
         const stem = { x: grid.left + centre.x * cell, y: grid.top - centre.y * cell };
-        const stemRadius = Math.max(0, distanceToZero(grown, w, h, true)[cellIndex] - 0.5) * cell;
+        const stemRadius = Math.max(0, clearDistance(grown, w, h, Math.floor(centre.x), Math.floor(centre.y), centre.d) - 0.5) * cell;
 
-        return { grown, outline, centre, stem, stemRadius };
+        return { grown, outline, centre, stem, stemRadius, rings: new Map() };
     };
     // Growth by `distance` mm: every point within `distance` of a set cell lies in a cell whose centre is within
     // `distance` + one cell diagonal of a set cell's centre, so dilating by that radius keeps the grown ring at least
     // `distance` away (at most about one cell diagonal more); a plain `distance / cell` falls a cell short along
     // diagonal staircases.
-    const growRing = (grown, distance) => {
-        const pieces = maskPolygons(dilate(grown, w, h, distance / cell + Math.SQRT2), w, h, grid);
+    // Kept per shape, so the base outline the fit test grows is reused by `grow`.
+    const growRing = (shape, distance) => {
+        if (!shape.rings.has(distance)) {
+            const pieces = maskPolygons(dilate(shape.grown, w, h, distance / cell + Math.SQRT2), w, h, grid);
+            shape.rings.set(
+                distance,
+                pieces.reduce((best, piece) => (Math.abs(signedArea(piece.outer)) > Math.abs(signedArea(best.outer)) ? piece : best)).outer,
+            );
+        }
 
-        return pieces.reduce((best, piece) => (Math.abs(signedArea(piece.outer)) > Math.abs(signedArea(best.outer)) ? piece : best)).outer;
+        return shape.rings.get(distance);
     };
-    // The same test the analysis blocks on: room for the stem, the cutout square in the cap outline and the cavity
-    // square in the base outline.
+    // The same test the analysis blocks on (`baseFits`): room for the stem, the cutout square in the cap outline and
+    // the cavity square in the base outline, the base outline grown only when the rest passes.
     const holds = (shape) =>
         shape.stemRadius >= stemClearance(keycap) &&
-        baseFits({
-            cap: [{ outer: shape.outline, holes: [] }],
-            base: [{ outer: growRing(shape.grown, clearance + wall), holes: [] }],
-            stem: shape.stem,
-            keycap,
-        });
+        cutoutFits({ cap: [{ outer: shape.outline, holes: [] }], stem: shape.stem, keycap }) &&
+        cavityFits({ base: [{ outer: growRing(shape, clearance + wall), holes: [] }], stem: shape.stem, keycap });
 
     // Solidify: when the shape cannot hold the switch, close wider gaps (on a padded copy so wide closings are not
-    // clipped by the grid), then wrap the silhouette in its convex hull; the first variant that holds wins. When none
-    // does, the plain shape stays and the analysis blocks it.
+    // clipped by the grid), then wrap the silhouette in its convex hull; the first variant that holds wins. Every
+    // closing lies inside the convex hull and a bigger shape holds the switch at least as well, so the hull is tried
+    // first: when even the hull cannot hold it (or the shape already is the hull, for separate pieces) the plain shape
+    // stays at once and the analysis blocks it. Closings that cannot contain the cutout square are rejected before
+    // their outline is traced.
     const notes = [];
     let shape = shapeOf(solid);
-    if (!holds(shape)) {
-        const radii = SOLIDIFY_RADII.filter((radius) => separate || radius > CLOSING_RADII[closedWith]);
-        const variants = [...radii.map((radius) => () => closeWide(mask, w, h, radius / cell)), () => hullMask(mask, w, h)];
-        for (const variant of variants) {
-            const candidate = variant();
-            if (!candidate) continue;
-            const filled = shapeOf(candidate);
-            if (holds(filled)) {
-                shape = filled;
-                notes.push(FILLED_NOTE);
-                break;
+    if (!separate && !holds(shape)) {
+        const hull = shapeOf(hullMask(mask, w, h), { quick: true });
+        if (hull && holds(hull)) {
+            // A wider closing contains a narrower one, so holding grows with the radius: find the smallest radius
+            // that holds by trying the narrowest, then the widest (when it fails the hull wins), then bisecting.
+            const radii = SOLIDIFY_RADII.filter((r) => r > CLOSING_RADII[closedWith]);
+            const tried = new Map();
+            const attempt = (i) => {
+                if (!tried.has(i)) {
+                    const candidate = closeWide(mask, w, h, radii[i] / cell, pad / cell - 1);
+                    const filled = candidate && shapeOf(candidate, { quick: true });
+                    tried.set(i, filled && holds(filled) ? filled : null);
+                }
+                return tried.get(i);
+            };
+            shape = hull;
+            if (radii.length && (attempt(0) || attempt(radii.length - 1))) {
+                let [lo, hi] = [0, radii.length - 1];
+                while (lo < hi) {
+                    const mid = Math.floor((lo + hi) / 2);
+                    if (attempt(mid)) hi = mid;
+                    else lo = mid + 1;
+                }
+                shape = attempt(lo);
             }
+            notes.push(FILLED_NOTE);
         }
     }
-    if (separate && !notes.includes(FILLED_NOTE)) notes.push(HULL_NOTE);
+    if (separate) notes.push(HULL_NOTE);
     const { grown, outline, centre, stem, stemRadius } = shape;
 
     // 5. Insets and the hollow cap's cavity, from the same grown mask. The boss removal clears every cell whose
@@ -211,17 +238,19 @@ export function traceOutline({ image, frame, keycap }) {
     };
 
     // 6. Growth for the switch base's pocket and outline: the same grown mask dilated, its outer ring.
-    const grow = (distance) => growRing(grown, distance);
+    const grow = (distance) => growRing(shape, distance);
 
     return { outline, stem, stemRadius, notes, inset, cavity, grow };
 }
 
 /**
- * Close gaps of `radius` cells and fill holes on a copy padded by the radius (so the closing is not clipped by the
- * grid), cropped back; null when the result is not one piece.
+ * Close gaps of `radius` cells and fill holes on a copy padded so the dilation is not clipped by the grid (the mask
+ * already keeps `margin` clear cells to the grid edge), cropped back; null when the result is not one piece. The
+ * dilation then lies wholly inside the padded copy and everything outside it is farther than the radius from the mask,
+ * so the result is the same as on an unbounded grid.
  */
-function closeWide(mask, width, height, radius) {
-    const pad = Math.ceil(radius) + 1;
+function closeWide(mask, width, height, radius, margin) {
+    const pad = Math.max(2, Math.ceil(radius - margin) + 2);
     const [pw, ph] = [width + 2 * pad, height + 2 * pad];
     const padded = new Uint8Array(pw * ph);
     for (let y = 0; y < height; y++) padded.set(mask.subarray(y * width, (y + 1) * width), (y + pad) * pw + pad);

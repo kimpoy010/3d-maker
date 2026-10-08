@@ -356,9 +356,17 @@ function squareInside(polygons, stem, half) {
  * the cavity square under the plate lies inside the `base` outline polygons (both centred on the stem).
  */
 export function baseFits({ cap, base, stem, keycap }) {
-    const { cutout, cavity } = keycap.base;
+    return cutoutFits({ cap, stem, keycap }) && cavityFits({ base, stem, keycap });
+}
 
-    return squareInside(cap, stem, cutout / 2 + CUTOUT_MARGIN) && squareInside(base, stem, cavity / 2);
+/** The first half of `baseFits`: the plate cutout plus 0.8 mm on every side inside the `cap` outline polygons. */
+export function cutoutFits({ cap, stem, keycap }) {
+    return squareInside(cap, stem, keycap.base.cutout / 2 + CUTOUT_MARGIN);
+}
+
+/** The second half of `baseFits`: the cavity square inside the `base` outline polygons. */
+export function cavityFits({ base, stem, keycap }) {
+    return squareInside(base, stem, keycap.base.cavity / 2);
 }
 
 /** Height of the base's rim above its bottom: the solid zone, the plate, the rest gap and the inserted part of the cap. */
